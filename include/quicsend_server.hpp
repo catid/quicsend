@@ -36,7 +36,7 @@ public:
         OnConnectCallback on_connect,
         OnTimeoutCallback on_timeout,
         OnDataCallback on_data,
-        int timeout_msec) = 100);
+        int timeout_msec = 100);
 
 protected:
     QuicSendServerSettings settings_;

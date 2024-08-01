@@ -38,6 +38,13 @@ QuicSendServer::~QuicSendServer() {
 }
 
 void QuicSendServer::Close(uint64_t connection_id) {
+    // FIXME
+    auto conn = sender_->Find(ConnectionId{});  // You need to maintain a mapping from connection_id to ConnectionId
+    if (conn) {
+        conn->settings_.on_timeout(connection_id);
+        // Remove the connection from the sender
+        sender_->Remove(conn->settings_.dcid);
+    }
 }
 
 int64_t QuicSendServer::Request(
@@ -47,7 +54,40 @@ int64_t QuicSendServer::Request(
     const void* data,
     int bytes)
 {
+    // FIXME
+    auto conn = sender_->Find(ConnectionId{});  // You need to maintain a mapping from connection_id to ConnectionId
+    if (!conn) {
+        return -1;
+    }
 
+    std::vector<std::pair<std::string, std::string>> headers = {
+        {":method", "GET"},
+        {":path", path},
+        {"user-agent", "quicsend"},
+        {"content-type", BodyDataTypeToString(type)},
+    };
+
+    if (bytes > 0) {
+        headers.push_back({"content-length", std::to_string(bytes)});
+    }
+
+    int64_t stream_id = conn->SendRequest(
+        [this, connection_id](DataStream& stream) {
+            QuicheMailbox::Event event;
+            event.ConnectionId = connection_id;
+            event.IsResponse = true;
+            event.Id = stream.Id;
+            event.Path = stream.Path;
+            event.Type = stream.ContentType;
+            event.Buffer = stream.Buffer;
+            mailbox_.Post(event);
+        },
+        headers,
+        data,
+        bytes
+    );
+
+    return stream_id;
 }
 
 void QuicSendServer::Poll(
@@ -56,7 +96,25 @@ void QuicSendServer::Poll(
     OnDataCallback on_data,
     int timeout_msec)
 {
+    // FIXME
+    mailbox_.Poll([&](const QuicheMailbox::Event& event) {
+        if (event.IsResponse) {
+            on_data(event.ConnectionId, event);
+        } else {
+            // This is a new connection event
+            on_connect(event.ConnectionId, 
+                sender_->Find(ConnectionId{})->peer_endpoint_);  // You need to maintain a mapping
+        }
+    }, timeout_msec);
 
+    // Check for timeouts
+    auto connections = sender_->GetConnections();  // You need to add this method to QuicheSender
+    for (const auto& pair : connections) {
+        if (pair.second->IsClosed()) {
+            on_timeout(pair.second->settings_.AssignedId);
+            sender_->Remove(pair.first);
+        }
+    }
 }
 
 void QuicSendServer::OnDatagram(

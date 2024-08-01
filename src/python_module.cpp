@@ -56,7 +56,7 @@ int64_t quicsend_client_request(
     int32_t bytes)
 {
     if (client == NULL) {
-        return;
+        return -1;
     }
 
     return client->Request(path, BodyDataTypeFromString(content_type), data, bytes);

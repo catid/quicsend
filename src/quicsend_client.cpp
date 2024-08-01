@@ -38,7 +38,7 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
     qcs.on_timeout = [this](int32_t /*connection_id*/) {
         Close();
     };
-    qcs.on_connect = [this](int32_t /*connection_id*/) {
+    qcs.on_connect = [this](int32_t /*connection_id*/, const boost::asio::ip::udp::endpoint& /*peer_endpoint*/) {
         LOG_INFO() << "*** Connection established";
         if (cert_der_.empty()) {
             LOG_WARN() << "No peer certificate file provided to check";
