@@ -25,6 +25,7 @@ QuicSendServer::QuicSendServer(
 }
 
 QuicSendServer::~QuicSendServer() {
+    mailbox_.Shutdown();
     Close();
     JoinThread(loop_thread_);
 }

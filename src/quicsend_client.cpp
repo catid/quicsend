@@ -30,6 +30,8 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
 
     sender_ = std::make_shared<QuicheSender>(qs_);
 
+    connection_ = std::make_shared<QuicheConnection>();
+
     QCSettings qcs;
     qcs.qs = qs_;
     qcs.dcid = ConnectionId();
@@ -46,15 +48,22 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
             return;
         } else {
             LOG_INFO() << "Verified peer certificate";
+            connected_ = true;
         }
-
-        settings_.OnConnect();
     };
     qcs.on_request = [this](DataStream& stream) {
-        settings_.OnRequest(stream);
+        QuicheMailbox::Event event;
+        event.IsResponse = false;
+        event.Id = stream.Id;
+        event.Type = stream.ContentType;
+        event.Connection = connection_;
+        event.Buffer = stream.Buffer;
+
+        mailbox_.Post(event);
+
+        stream.Buffer = nullptr;
     };
 
-    connection_ = std::make_shared<QuicheConnection>();
     connection_->Initialize(qcs);
 
     resolver_.async_resolve(settings_.Host, std::to_string(settings_.Port),
@@ -81,6 +90,7 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
 }
 
 QuicSendClient::~QuicSendClient() {
+    mailbox_.Shutdown();
     Close();
     JoinThread(loop_thread_);
 }
@@ -102,13 +112,26 @@ void QuicSendClient::Close() {
 
 int64_t QuicSendClient::Request(
     const std::string& path,
-    RequestDataType type,
+    BodyDataType type,
     const void* data,
     int bytes)
 {
     if (closed_) {
         return;
     }
+
+    auto response_callback = [this](DataStream& stream) {
+        QuicheMailbox::Event event;
+        event.IsResponse = true;
+        event.Id = stream.Id;
+        event.Type = stream.ContentType;
+        event.Connection = connection_;
+        event.Buffer = stream.Buffer;
+
+        mailbox_.Post(event);
+
+        stream.Buffer = nullptr;
+    };
 
     if (!data || bytes == 0) {
         const std::vector<std::pair<std::string, std::string>> headers = {
@@ -120,11 +143,7 @@ int64_t QuicSendClient::Request(
             {"content-length", "0"}
         };
 
-        auto fn = [this](DataStream& stream) {
-            mailbox_.Post()
-        };
-
-        return connection_->SendRequest(fn, headers);
+        return connection_->SendRequest(response_callback, headers);
     }
 
     const std::vector<std::pair<std::string, std::string>> headers = {
@@ -133,25 +152,24 @@ int64_t QuicSendClient::Request(
         {":authority", settings_.Host},
         {":path", path},
         {"user-agent", "quiche-quicsend"},
-        {"content-type", RequestDataTypeToString(type)},
+        {"content-type", BodyDataTypeToString(type)},
         {"content-length", std::to_string(bytes)}
     };
 
-    auto fn = [this](DataStream& stream) {
-        mailbox_.Post()
-    };
-
-    return connection_->SendRequest(fn, headers, data, bytes);
+    return connection_->SendRequest(response_callback, headers, data, bytes);
 }
 
 void QuicSendClient::Poll(
     OnConnectCallback on_connect,
     OnTimeoutCallback on_timeout,
-    OnRequestCallback on_request,
+    OnDataCallback on_data,
     int poll_msec)
 {
     if (closed_) {
-        on_timeout();
+        if (!reported_timeout_) {
+            on_timeout();
+            reported_timeout_ = true;
+        }
         return;
     }
 
@@ -159,9 +177,10 @@ void QuicSendClient::Poll(
         return;
     }
 
-    if (connected_ && !reported_connection_) {
+    if (!reported_connect_) {
         on_connect();
-        reported_connection_ = true;
+        reported_connect_ = true;
     }
 
+    mailbox_.Poll(on_data, poll_msec);
 }

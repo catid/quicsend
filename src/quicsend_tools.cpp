@@ -106,7 +106,7 @@ void Logger::ProcessLogQueue() {
     LogsToProcess.clear();
 }
 
-static void debug_log(const char* line, void* argp) {
+static void debug_log(const char* line, void* /*argp*/) {
     LOG_INFO() << "QuicheLog: " << line;
 }
 
@@ -167,40 +167,4 @@ std::vector<uint8_t> LoadPEMCertAsDER(const std::string& pem_file_path) {
     }
 
     return der_data;
-}
-
-
-//------------------------------------------------------------------------------
-// QuicSendMailbox
-
-void QuicSendMailbox::Poll(MailboxCallback callback)
-{
-    std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return !events_.empty(); });
-    if (events_.empty()) {
-        return;
-    }
-
-    auto event = events_.back();
-    events_.pop_back();
-
-    lock.unlock();
-
-    callback(event->Id, event->Type, event->Buffer->data(), event->Buffer->size());
-}
-
-void QuicSendMailbox::Post(
-    int64_t stream_id,
-    RequestDataType type,
-    std::shared_ptr<std::vector<uint8_t>> buffer)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    auto event = std::make_shared<QueuedEvent>();
-    event->Id = stream_id;
-    event->Type = type;
-    event->Buffer = buffer;
-
-    events_.push_back(event);
-    cv_.notify_one();
 }

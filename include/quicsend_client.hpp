@@ -26,14 +26,14 @@ public:
 
     int64_t Request(
         const std::string& path,
-        RequestDataType type,
+        BodyDataType type,
         const void* data,
         int bytes);
 
     void Poll(
         OnConnectCallback on_connect,
         OnTimeoutCallback on_timeout,
-        OnRequestCallback on_request,
+        OnDataCallback on_request,
         int poll_msec = 100);
 
 private:
@@ -42,20 +42,22 @@ private:
     boost::asio::io_context io_context_;
     std::vector<uint8_t> cert_der_;
 
+    // TBD: Move to Connection class?
+    std::atomic<bool> reported_timeout_ = ATOMIC_VAR_INIT(false);
+    std::atomic<bool> reported_connect_ = ATOMIC_VAR_INIT(false);
+
     boost::asio::ip::udp::resolver resolver_;
     boost::asio::ip::udp::endpoint resolved_endpoint_;
 
     std::shared_ptr<QuicheSocket> qs_;
     std::shared_ptr<QuicheConnection> connection_;
     std::shared_ptr<QuicheSender> sender_;
+    QuicheMailbox mailbox_;
 
     std::shared_ptr<std::thread> loop_thread_;
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);
 
     std::atomic<bool> connected_ = ATOMIC_VAR_INIT(false);
-    std::atomic<bool> reported_connection_ = ATOMIC_VAR_INIT(false);
-
-    QuicSendMailbox mailbox_;
 
     void Loop();
 };

@@ -46,6 +46,7 @@ private:
 
     std::shared_ptr<QuicheSocket> qs_;
     std::shared_ptr<QuicheSender> sender_;
+    QuicheMailbox mailbox_;
 
     std::shared_ptr<std::thread> loop_thread_;
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);

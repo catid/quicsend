@@ -160,6 +160,46 @@ protected:
 
 
 //------------------------------------------------------------------------------
+// QuicheMailbox
+
+class QuicheConnection;
+
+enum class BodyDataType {
+    Unknown,
+    Text,
+    Binary
+};
+
+const char* BodyDataTypeToString(BodyDataType type);
+
+
+class QuicheMailbox {
+public:
+    struct Event {
+        bool IsResponse = false; // else it's a response
+        int64_t Id = -1;
+        BodyDataType Type = BodyDataType::Unknown;
+        std::shared_ptr<QuicheConnection> Connection;
+        std::shared_ptr<std::vector<uint8_t>> Buffer;
+    };
+
+    using MailboxCallback = std::function<void(const Event& event)>;
+
+    void Shutdown();
+    // Wait for events.  Pass -1 for timeout_msec to wait indefinitely.
+    void Poll(MailboxCallback callback, int timeout_msec = -1);
+    void Post(const Event& event);
+
+protected:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::atomic<bool> terminated_ = ATOMIC_VAR_INIT(false);
+
+    std::vector<Event> events_;
+};
+
+
+//------------------------------------------------------------------------------
 // DataStream
 
 struct DataStream;
@@ -177,7 +217,8 @@ struct DataStream {
     bool Finished = false;
     std::shared_ptr<std::vector<uint8_t>> Buffer;
 
-    std::string Method, Path, Status, ContentType;
+    std::string Method, Path, Status;
+    BodyDataType ContentType = BodyDataType::Unknown;
 
     ResponseCallback OnResponse;
 
@@ -196,7 +237,7 @@ struct DataStream {
 
 using OnTimeoutCallback = std::function<void()>;
 using OnConnectCallback = std::function<void()>;
-using OnRequestCallback = std::function<void(DataStream& stream)>;
+using OnDataCallback = std::function<void(const QuicheMailbox::Event& event)>;
 
 struct QCSettings {
     std::shared_ptr<QuicheSocket> qs;
@@ -205,7 +246,7 @@ struct QCSettings {
 
     OnConnectCallback on_connect;
     OnTimeoutCallback on_timeout;
-    OnRequestCallback on_request;
+    OnDataCallback on_request;
 };
 
 class QuicheConnection {

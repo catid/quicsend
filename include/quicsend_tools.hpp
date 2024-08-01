@@ -13,17 +13,6 @@
 
 
 //------------------------------------------------------------------------------
-// Constants
-
-enum class RequestDataType {
-    Text,
-    Binary
-};
-
-const char* RequestDataTypeToString(RequestDataType type);
-
-
-//------------------------------------------------------------------------------
 // Logger
 
 class Logger {
@@ -162,34 +151,3 @@ inline uint32_t read_uint32_le(const void* buffer) {
            (static_cast<uint32_t>(ptr[2]) << 16) |
            (static_cast<uint32_t>(ptr[3]) << 24);
 }
-
-
-//------------------------------------------------------------------------------
-// QuicSendMailbox
-
-class QuicSendMailbox {
-public:
-    using MailboxCallback = std::function<void(
-        int64_t stream_id,
-        RequestDataType type,
-        std::shared_ptr<std::vector<uint8_t>> buffer)>;
-
-    void Poll(MailboxCallback callback);
-
-    void Post(
-        int64_t stream_id,
-        RequestDataType type,
-        std::shared_ptr<std::vector<uint8_t>> buffer);
-
-protected:
-    std::mutex mutex_;
-    std::condition_variable cv_;
-
-    struct QueuedEvent {
-        int64_t Id = -1;
-        RequestDataType Type;
-        std::shared_ptr<std::vector<uint8_t>> Buffer;
-    };
-
-    std::vector<std::shared_ptr<QueuedEvent>> events_;
-};

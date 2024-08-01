@@ -95,17 +95,6 @@ quiche_config* CreateQuicheConfig(
     return config;
 }
 
-const char* RequestDataTypeToString(RequestDataType type) {
-    switch (type) {
-    case RequestDataType::Text:
-        return "application/text";
-    case RequestDataType::Binary:
-        return "application/octet-stream";
-    default:
-        return "application/unknown";
-    }
-}
-
 
 //------------------------------------------------------------------------------
 // Token Serialization
@@ -507,7 +496,13 @@ void DataStream::OnHeader(const std::string& name, const std::string& value)
     } else if (name == ":status") {
         Status = value;
     } else if (name == "content-type") {
-        ContentType = value;
+        if (value == BodyDataTypeToString(BodyDataType::Binary)) {
+            ContentType = BodyDataType::Binary;
+        } else if (value == BodyDataTypeToString(BodyDataType::Text)) {
+            ContentType = BodyDataType::Text;
+        } else {
+            ContentType = BodyDataType::Unknown;
+        }
     }
 }
 
@@ -536,8 +531,7 @@ void DataStream::Reset()
     Method.clear();
     Path.clear();
     Status.clear();
-    ContentType.clear();
-
+    ContentType = BodyDataType::Unknown;
     Buffer = nullptr;
     OnResponse = nullptr;
 }
@@ -1102,4 +1096,61 @@ std::shared_ptr<QuicheConnection> QuicheSender::Find(const ConnectionId& dcid) {
         return nullptr;
     }
     return conn_it->second;
+}
+
+
+//------------------------------------------------------------------------------
+// QuicheMailbox
+
+const char* BodyDataTypeToString(BodyDataType type) {
+    switch (type) {
+    case BodyDataType::Text:
+        return "application/text";
+    case BodyDataType::Binary:
+        return "application/octet-stream";
+    default:
+        return "application/unknown";
+    }
+}
+
+void QuicheMailbox::Shutdown()
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+    terminated_ = true;
+    cv_.notify_one();
+}
+
+void QuicheMailbox::Poll(MailboxCallback callback, int timeout_msec)
+{
+    std::vector<Event> events;
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        if (timeout_msec < 0) {
+            cv_.wait(lock, 
+                [this] { return terminated_ || !events_.empty(); });
+        } else {
+            cv_.wait_for(lock, std::chrono::milliseconds(timeout_msec),
+                [this] { return terminated_ || !events_.empty(); });
+        }
+
+        if (terminated_ || events_.empty()) {
+            return;
+        }
+
+        std::swap(events, events_);
+    }
+
+    // Process events without lock held to avoid deadlock and blocking IO thread
+    for (const auto& event : events) {
+        callback(event);
+    }
+}
+
+void QuicheMailbox::Post(const Event& event)
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    events_.push_back(event);
+    cv_.notify_one();
 }
