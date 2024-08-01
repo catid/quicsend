@@ -4,10 +4,7 @@
 //------------------------------------------------------------------------------
 // HTTP/3 Server
 
-QuicSendServer::QuicSendServer(
-    uint16_t port,
-    const std::string& cert_path,
-    const std::string& key_path)
+QuicSendServer::QuicSendServer(const QuicSendServerSettings& settings)
 {
     DatagramCallback datagram_callback = [this](
         uint8_t* data,
@@ -17,7 +14,12 @@ QuicSendServer::QuicSendServer(
         OnDatagram(data, bytes, peer_endpoint);
     };
 
-    qs_ = std::make_shared<QuicheSocket>(io_context_, datagram_callback, port, cert_path, key_path);
+    qs_ = std::make_shared<QuicheSocket>(
+        io_context_,
+        datagram_callback,
+        settings.Port,
+        settings.CertPath,
+        settings.KeyPath);
 
     sender_ = std::make_shared<QuicheSender>(qs_);
 
@@ -152,6 +154,7 @@ std::shared_ptr<QuicheConnection> QuicSendServer::create_conn(
     std::shared_ptr<QuicheConnection> qc = std::make_shared<QuicheConnection>();
 
     QCSettings settings;
+    settings.AssignedId = ++next_assigned_id_;
     settings.qs = qs_;
     settings.dcid = dcid;
     settings.on_timeout = [this, dcid]() {

@@ -235,18 +235,21 @@ struct DataStream {
 //------------------------------------------------------------------------------
 // Connection State
 
-using OnTimeoutCallback = std::function<void()>;
-using OnConnectCallback = std::function<void()>;
-using OnDataCallback = std::function<void(const QuicheMailbox::Event& event)>;
+using OnTimeoutCallback = std::function<void(int32_t connection_id)>;
+using OnConnectCallback = std::function<void(int32_t connection_id)>;
+using OnDataCallback = std::function<void(int32_t connection_id, const DataStream& stream)>;
 
 struct QCSettings {
+    // Identifier assigned to this connection by the server
+    int32_t AssignedId = 0;
+
     std::shared_ptr<QuicheSocket> qs;
 
     ConnectionId dcid;
 
     OnConnectCallback on_connect;
     OnTimeoutCallback on_timeout;
-    OnDataCallback on_request;
+    OnDataCallback on_data;
 };
 
 class QuicheConnection {
@@ -299,6 +302,9 @@ protected:
     std::recursive_mutex mutex_;
     quiche_conn* conn_ = nullptr;
     quiche_h3_conn* http3_ = nullptr;
+
+    std::atomic<bool> reported_timeout_ = ATOMIC_VAR_INIT(false);
+    std::atomic<bool> reported_connect_ = ATOMIC_VAR_INIT(false);
 
     std::shared_ptr<boost::asio::deadline_timer> quiche_timer_;
     std::atomic<bool> timeout_ = ATOMIC_VAR_INIT(false);

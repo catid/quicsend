@@ -7,21 +7,39 @@
 //------------------------------------------------------------------------------
 // HTTP/3 Server
 
+struct QuicSendServerSettings {
+    uint16_t Port;
+    std::string KeyPath;
+    std::string CertPath;
+};
+
 class QuicSendServer {
 public:
-    QuicSendServer(
-        uint16_t port,
-        const std::string& cert_path,
-        const std::string& key_path);
+    QuicSendServer(const QuicSendServerSettings& settings);
     ~QuicSendServer();
 
     bool IsRunning() const {
         return !closed_;
     }
 
-    void Close();
+    void Close(int32_t connection_id);
 
-private:
+    int64_t Request(
+        int32_t connection_id,
+        const std::string& path,
+        BodyDataType type,
+        const void* data,
+        int bytes);
+
+    void Poll(
+        OnConnectCallback on_connect,
+        OnTimeoutCallback on_timeout,
+        OnDataCallback on_request,
+        int poll_msec = 100);
+
+protected:
+    QuicSendServerSettings settings_;
+
     void OnDatagram(
         uint8_t* data,
         std::size_t bytes,
@@ -50,6 +68,8 @@ private:
 
     std::shared_ptr<std::thread> loop_thread_;
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);
+
+    int32_t next_assigned_id_ = 0;
 
     void Loop();
 };

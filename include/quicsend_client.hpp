@@ -42,10 +42,6 @@ private:
     boost::asio::io_context io_context_;
     std::vector<uint8_t> cert_der_;
 
-    // TBD: Move to Connection class?
-    std::atomic<bool> reported_timeout_ = ATOMIC_VAR_INIT(false);
-    std::atomic<bool> reported_connect_ = ATOMIC_VAR_INIT(false);
-
     boost::asio::ip::udp::resolver resolver_;
     boost::asio::ip::udp::endpoint resolved_endpoint_;
 
