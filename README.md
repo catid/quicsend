@@ -1,9 +1,11 @@
-# Distributed C++ Extensions
+# quicsend :: High-performance Internet-ready RPC/file transfers from Python
 
-Uses `quiche` for HTTP3 transport security and BBRv2 congestion control.  Saturates 10G Internet connections with a single server.
+Use Cloudflare quiche to host secure HTTP3 RPC/file transfer servers from Python on the open Internet.
+
+This was developed while working towards a distributed model training system: I was looking for a secure way to send model/pseudo-gradients to/from remote docker containers as fast as possible.  Hence, there's certificate pinning for MitM protection, and client authentication to avoid misuse of the server.  It uses multiple parallel connections with BBRv2 congestion contorl to transparently to make full use of the available bandwidth.  It exposes a simple polling interface to Python so that it can be used directly from training scripts for convenience.  The code is all in C++ for performance reasons, with the Internet-exposed server written in Rust and provided by the quiche library.
 
 
-# Setup
+# Certificate Management
 
 On your central server, generate a root certificate.  If you have multiple servers you can reuse the same root certificate.
 
@@ -39,7 +41,7 @@ sudo update-ca-certificates
 openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt server.pem
 ```
 
-To uninstall the certificate:
+To uninstall the certificate from the client machine:
 
 ```bash
 sudo rm /usr/local/share/ca-certificates/root_quicsend.crt
@@ -48,7 +50,20 @@ sudo update-ca-certificates --fresh
 ```
 
 
-## Build
+## Usage
+
+Install the package in your Python environment:
+
+```bash
+sudo apt install cmake build-essential cargo libboost-system-dev
+
+pip install quicsend
+```
+
+Follow the example code in `example_client.py` and `example_server.py` to get started.
+
+
+## Manual Build Instructions
 
 ```bash
 git clone https://github.com/catid/quicsend.git
@@ -58,3 +73,8 @@ sudo apt install cmake build-essential cargo libboost-system-dev
 
 ./install.sh
 ```
+
+
+## Ackwnoledgements
+
+This project is based on the Cloudflare quiche library: https://github.com/cloudflare/quiche
