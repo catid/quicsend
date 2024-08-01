@@ -35,8 +35,8 @@ public:
     void Poll(
         OnConnectCallback on_connect,
         OnTimeoutCallback on_timeout,
-        OnDataCallback on_request,
-        int poll_msec = 100);
+        OnDataCallback on_data,
+        int timeout_msec) = 100);
 
 protected:
     QuicSendServerSettings settings_;
@@ -71,6 +71,4 @@ protected:
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);
 
     uint64_t next_assigned_id_ = 0;
-
-    void Loop();
 };

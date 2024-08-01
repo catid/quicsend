@@ -23,24 +23,40 @@ QuicSendServer::QuicSendServer(const QuicSendServerSettings& settings)
 
     sender_ = std::make_shared<QuicheSender>(qs_);
 
+    loop_thread_ = std::make_shared<std::thread>([this]() {
+        io_context_.run();
+        closed_ = true;
+    });
+
     qs_->StartReceive();
 }
 
 QuicSendServer::~QuicSendServer() {
     mailbox_.Shutdown();
-    Close();
+    io_context_.stop();
     JoinThread(loop_thread_);
 }
 
-void QuicSendServer::Loop() {
-    io_context_.run();
-    closed_ = true;
+void QuicSendServer::Close(uint64_t connection_id) {
 }
 
-void QuicSendServer::Close() {
-    closed_ = true;
+int64_t QuicSendServer::Request(
+    uint64_t connection_id,
+    const std::string& path,
+    BodyDataType type,
+    const void* data,
+    int bytes)
+{
 
-    // FIXME
+}
+
+void QuicSendServer::Poll(
+    OnConnectCallback on_connect,
+    OnTimeoutCallback on_timeout,
+    OnDataCallback on_data,
+    int timeout_msec)
+{
+
 }
 
 void QuicSendServer::OnDatagram(

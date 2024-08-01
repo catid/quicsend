@@ -35,9 +35,9 @@ struct PythonClientSettings {
 QuicSendClient* quicsend_client_create(const PythonClientSettings* settings)
 {
     QuicSendClientSettings cs;
-    cs.Host = cs.Host;
-    cs.Port = cs.Port;
-    cs.CertPath = cs.CertPath;
+    cs.Host = settings->Host;
+    cs.Port = settings->Port;
+    cs.CertPath = settings->CertPath;
 
     return new QuicSendClient(cs);
 }

@@ -76,7 +76,8 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
         });
 
     loop_thread_ = std::make_shared<std::thread>([this]() {
-        Loop();
+        io_context_.run();
+        closed_ = true;
     });
 }
 
@@ -84,11 +85,6 @@ QuicSendClient::~QuicSendClient() {
     mailbox_.Shutdown();
     Close();
     JoinThread(loop_thread_);
-}
-
-void QuicSendClient::Loop() {
-    io_context_.run();
-    closed_ = true;
 }
 
 void QuicSendClient::Close() {
