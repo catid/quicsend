@@ -496,13 +496,7 @@ void DataStream::OnHeader(const std::string& name, const std::string& value)
     } else if (name == ":status") {
         Status = value;
     } else if (name == "content-type") {
-        if (value == BodyDataTypeToString(BodyDataType::Binary)) {
-            ContentType = BodyDataType::Binary;
-        } else if (value == BodyDataTypeToString(BodyDataType::Text)) {
-            ContentType = BodyDataType::Text;
-        } else {
-            ContentType = BodyDataType::Unknown;
-        }
+        ContentType = BodyDataTypeFromString(value);
     }
 }
 
@@ -533,7 +527,7 @@ void DataStream::Reset()
     Status.clear();
     ContentType = BodyDataType::Unknown;
     Buffer = nullptr;
-    OnResponse = nullptr;
+    IsResponse = false;
 }
 
 
@@ -666,7 +660,7 @@ void QuicheConnection::OnDatagram(
                 return;
             }
 
-            settings_.on_connect();
+            settings_.on_connect(settings_.AssignedId);
         }
 
         ProcessH3Events();
@@ -674,7 +668,7 @@ void QuicheConnection::OnDatagram(
 
     if (!timeout_) {
         if (quiche_conn_is_closed(conn_)) {
-            settings_.on_timeout();
+            settings_.on_timeout(settings_.AssignedId);
             timeout_ = true;
             return;
         }
@@ -688,7 +682,7 @@ void QuicheConnection::TickTimeout() {
 
     if (quiche_conn_is_closed(conn_)) {
         if (!timeout_) {
-            settings_.on_timeout();
+            settings_.on_timeout(settings_.AssignedId);
         }
         timeout_ = true;
         return;
@@ -832,11 +826,14 @@ void QuicheConnection::ProcessH3Events() {
                     return;
                 }
 
-                if (stream.OnResponse) {
-                    stream.OnResponse(stream);
-                } else {
-                    settings_.on_request(stream);
-                }
+                QuicheMailbox::Event event;
+                event.IsResponse = stream.IsResponse;
+                event.Id = stream.Id;
+                event.Type = stream.ContentType;
+                event.ConnectionId = settings_.AssignedId;
+                event.Buffer = stream.Buffer;
+
+                settings_.on_data(settings_.AssignedId, event);
 
                 stream.Reset();
                 break;
@@ -853,7 +850,7 @@ void QuicheConnection::ProcessH3Events() {
 
             case QUICHE_H3_EVENT_GOAWAY:
                 if (!timeout_) {
-                    settings_.on_timeout();
+                    settings_.on_timeout(settings_.AssignedId);
                     timeout_ = true;
                 }
                 break;
@@ -897,9 +894,7 @@ int64_t QuicheConnection::SendRequest(
         return -1;
     }
 
-    // Set up a response callback
-    streams_[stream_id].OnResponse = on_response;
-
+    streams_[stream_id].IsResponse = true;
     SendBody(stream_id, data, bytes);
 
     return stream_id;
@@ -1110,6 +1105,16 @@ const char* BodyDataTypeToString(BodyDataType type) {
         return "application/octet-stream";
     default:
         return "application/unknown";
+    }
+}
+
+BodyDataType BodyDataTypeFromString(const std::string& type) {
+    if (type == "application/text") {
+        return BodyDataType::Text;
+    } else if (type == "application/octet-stream") {
+        return BodyDataType::Binary;
+    } else {
+        return BodyDataType::Unknown;
     }
 }
 

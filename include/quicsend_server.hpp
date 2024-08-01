@@ -22,10 +22,11 @@ public:
         return !closed_;
     }
 
-    void Close(int32_t connection_id);
+    // API calls
+    void Close(uint64_t connection_id);
 
     int64_t Request(
-        int32_t connection_id,
+        uint64_t connection_id,
         const std::string& path,
         BodyDataType type,
         const void* data,
@@ -69,7 +70,7 @@ protected:
     std::shared_ptr<std::thread> loop_thread_;
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);
 
-    int32_t next_assigned_id_ = 0;
+    uint64_t next_assigned_id_ = 0;
 
     void Loop();
 };

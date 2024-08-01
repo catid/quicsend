@@ -34,7 +34,7 @@ public:
         OnConnectCallback on_connect,
         OnTimeoutCallback on_timeout,
         OnDataCallback on_request,
-        int poll_msec = 100);
+        int timeout_msec = 100);
 
 private:
     QuicSendClientSettings settings_;

@@ -51,17 +51,8 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
             connected_ = true;
         }
     };
-    qcs.on_data = [this](int32_t /*connection_id*/, DataStream& stream) {
-        QuicheMailbox::Event event;
-        event.IsResponse = false;
-        event.Id = stream.Id;
-        event.Type = stream.ContentType;
-        event.Connection = connection_;
-        event.Buffer = stream.Buffer;
-
+    qcs.on_data = [this](int32_t /*connection_id*/, const QuicheMailbox::Event& event) {
         mailbox_.Post(event);
-
-        stream.Buffer = nullptr;
     };
 
     connection_->Initialize(qcs);
@@ -163,7 +154,7 @@ void QuicSendClient::Poll(
     OnConnectCallback on_connect,
     OnTimeoutCallback on_timeout,
     OnDataCallback on_data,
-    int poll_msec)
+    int timeout_msec)
 {
     if (closed_) {
         if (!reported_timeout_) {
@@ -182,5 +173,5 @@ void QuicSendClient::Poll(
         reported_connect_ = true;
     }
 
-    mailbox_.Poll(on_data, poll_msec);
+    mailbox_.Poll(on_data, timeout_msec);
 }

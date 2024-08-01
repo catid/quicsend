@@ -171,15 +171,18 @@ enum class BodyDataType {
 };
 
 const char* BodyDataTypeToString(BodyDataType type);
+BodyDataType BodyDataTypeFromString(const std::string& type);
 
 
 class QuicheMailbox {
 public:
     struct Event {
+        uint64_t ConnectionId = 0;
         bool IsResponse = false; // else it's a response
-        int64_t Id = -1;
+        uint64_t Id = MAX_QUIC_STREAMS;
+
+        std::string Path;
         BodyDataType Type = BodyDataType::Unknown;
-        std::shared_ptr<QuicheConnection> Connection;
         std::shared_ptr<std::vector<uint8_t>> Buffer;
     };
 
@@ -209,6 +212,7 @@ using ResponseCallback = std::function<void(DataStream& stream)>;
 // Receives data from the network and buffers it
 struct DataStream {
     uint64_t Id = MAX_QUIC_STREAMS;
+    bool IsResponse = false;
 
     bool Sending = false;
     int SendOffset = 0;
@@ -219,8 +223,6 @@ struct DataStream {
 
     std::string Method, Path, Status;
     BodyDataType ContentType = BodyDataType::Unknown;
-
-    ResponseCallback OnResponse;
 
     void OnHeader(const std::string& name, const std::string& value);
     void OnData(const void* data, size_t bytes);
@@ -235,13 +237,13 @@ struct DataStream {
 //------------------------------------------------------------------------------
 // Connection State
 
-using OnTimeoutCallback = std::function<void(int32_t connection_id)>;
-using OnConnectCallback = std::function<void(int32_t connection_id)>;
-using OnDataCallback = std::function<void(int32_t connection_id, const DataStream& stream)>;
+using OnConnectCallback = std::function<void(uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint)>;
+using OnTimeoutCallback = std::function<void(uint64_t connection_id)>;
+using OnDataCallback = std::function<void(uint64_t connection_id, const QuicheMailbox::Event& event)>;
 
 struct QCSettings {
     // Identifier assigned to this connection by the server
-    int32_t AssignedId = 0;
+    uint64_t AssignedId = 0;
 
     std::shared_ptr<QuicheSocket> qs;
 
