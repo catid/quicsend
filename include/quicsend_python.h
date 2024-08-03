@@ -36,17 +36,17 @@ struct PythonQuicSendClientSettings {
 
 QuicSendClient* quicsend_client_create(const PythonQuicSendClientSettings* settings);
 
-void quicsend_client_destroy(QuicSendClient *client);
+void quicsend_client_destroy(QuicSendClient* client);
 
 int64_t quicsend_client_request(
-    QuicSendClient *client,
+    QuicSendClient* client,
     const char* path,
     const char* content_type, // Optional
     const void* data, // Optional
     int32_t bytes); // Optional
 
 // Returns non-zero if the client is still valid
-int32_t quicsend_client_poll(QuicSendClient *client,
+int32_t quicsend_client_poll(QuicSendClient* client,
                           connect_callback on_connect,
                           timeout_callback on_timeout,
                           data_callback on_data,
@@ -64,10 +64,10 @@ struct PythonQuicSendServerSettings {
 
 QuicSendServer* quicsend_server_create(const PythonQuicSendServerSettings* settings);
 
-void quicsend_server_destroy(QuicSendServer *server);
+void quicsend_server_destroy(QuicSendServer* server);
 
 int64_t quicsend_server_request(
-    QuicSendServer *server,
+    QuicSendServer* server,
     uint64_t connection_id,
     const char* path,
     const char* content_type,
@@ -75,7 +75,7 @@ int64_t quicsend_server_request(
     int32_t bytes);
 
 // Returns non-zero if the server is still valid
-int32_t quicsend_server_poll(QuicSendServer *server,
+int32_t quicsend_server_poll(QuicSendServer* server,
                           connect_callback on_connect,
                           timeout_callback on_timeout,
                           data_callback on_data,
