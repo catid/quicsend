@@ -51,7 +51,7 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
             connected_ = true;
         }
     };
-    qcs.on_data = [this](int32_t /*connection_id*/, const QuicheMailbox::Event& event) {
+    qcs.on_data = [this](const QuicheMailbox::Event& event) {
         mailbox_.Post(event);
     };
 

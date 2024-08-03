@@ -227,19 +227,19 @@ std::shared_ptr<QuicheConnection> QuicSendServer::create_conn(
 {
     std::shared_ptr<QuicheConnection> qc = std::make_shared<QuicheConnection>();
 
-    QCSettings settings;
-    settings.AssignedId = ++next_assigned_id_;
-    settings.qs = qs_;
-    settings.dcid = dcid;
-    settings.on_timeout = [this, dcid]() {
-        LOG_INFO() << "*** Connection timeout";
+    QCSettings qcs;
+    qcs.AssignedId = ++next_assigned_id_;
+    qcs.qs = qs_;
+    qcs.dcid = dcid;
+    qcs.on_timeout = [this, dcid](uint64_t connection_id) {
+        LOG_INFO() << "*** Connection timeout: " << connection_id;
     };
-    settings.on_connect = [this]() {
-        LOG_INFO() << "*** Connection established";
+    qcs.on_connect = [this](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
+        LOG_INFO() << "*** Connection established: " << connection_id << " " << peer_endpoint.address().to_string();
     };
     QuicheConnection* qcp = qc.get();
-    settings.on_request = [this, qcp](DataStream& stream) {
-        OnRequest(qcp, stream);
+    qcs.on_data = [this, qcp](const QuicheMailbox::Event& event) {
+        mailbox_.Post(event);
     };
 
     qc->Initialize(settings);

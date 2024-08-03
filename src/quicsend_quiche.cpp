@@ -677,6 +677,14 @@ void QuicheConnection::OnDatagram(
     FlushEgress();
 }
 
+void QuicheConnection::Close() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    if (!timeout_) {
+        quiche_conn_close(conn_, true, 0, nullptr, 0);
+    }
+}
+
 void QuicheConnection::TickTimeout() {
     // Called from function with lock held
 
@@ -1052,35 +1060,52 @@ void QuicheSender::Loop() {
     while (!terminated_) {
         std::this_thread::sleep_for(std::chrono::milliseconds(interval_msec));
 
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::shared_ptr<QuicheConnection>> freed_connections;
 
-        bool send_fast = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
 
-        auto it = connections_.begin();
-        while (it != connections_.end()) {
-            auto& connection = it->second;
-            if (connection->IsClosed()) {
-                it = connections_.erase(it);
-            } else {
-                if (connection->FlushEgress(buffer)) {
-                    send_fast = true;
+            bool send_fast = false;
+
+            auto it = connections_.begin();
+            while (it != connections_.end()) {
+                auto& connection = it->second;
+                if (connection->IsClosed()) {
+                    freed_connections.push_back(connection);
+
+                    // Remove from connections_
+                    it = connections_.erase(it);
+
+                    // Remove from connections_by_id_
+                    auto conn_it = connections_by_id_.find(connection->GetId());
+                    if (conn_it != connections_by_id_.end()) {
+                        connections_by_id_.erase(conn_it);
+                    }
+                } else {
+                    if (connection->FlushEgress(buffer)) {
+                        send_fast = true;
+                    }
+                    it++;
                 }
-                it++;
+            }
+
+            if (send_fast) {
+                interval_msec = QUIC_SEND_FAST_INTERVAL_MSEC;
+            } else {
+                interval_msec = QUIC_SEND_SLOW_INTERVAL_MSEC;
             }
         }
 
-        if (send_fast) {
-            interval_msec = QUIC_SEND_FAST_INTERVAL_MSEC;
-        } else {
-            interval_msec = QUIC_SEND_SLOW_INTERVAL_MSEC;
-        }
+        // Release connections outside of the lock
+        freed_connections.clear();
     }
 }
 
-void QuicheSender::Add(const ConnectionId& dcid, std::shared_ptr<QuicheConnection> qc) {
+void QuicheSender::Add(const ConnectionId& dcid, uint64_t connection_id, std::shared_ptr<QuicheConnection> qc) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     connections_[dcid] = qc;
+    connections_by_id_[connection_id] = qc;
 }
 
 std::shared_ptr<QuicheConnection> QuicheSender::Find(const ConnectionId& dcid) {
@@ -1088,6 +1113,16 @@ std::shared_ptr<QuicheConnection> QuicheSender::Find(const ConnectionId& dcid) {
 
     auto conn_it = connections_.find(dcid);
     if (conn_it == connections_.end()) {
+        return nullptr;
+    }
+    return conn_it->second;
+}
+
+std::shared_ptr<QuicheConnection> QuicheSender::Find(uint64_t connection_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto conn_it = connections_by_id_.find(connection_id);
+    if (conn_it == connections_by_id_.end()) {
         return nullptr;
     }
     return conn_it->second;

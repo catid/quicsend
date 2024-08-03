@@ -113,7 +113,7 @@ protected:
 //------------------------------------------------------------------------------
 // QuicheSocket
 
-struct QuicheConnection;
+class QuicheConnection;
 
 using DatagramCallback = std::function<void(
     uint8_t* data,
@@ -122,7 +122,7 @@ using DatagramCallback = std::function<void(
 
 class QuicheSocket {
 public:
-    friend struct QuicheConnection;
+    friend class QuicheConnection;
 
     QuicheSocket(
         boost::asio::io_context& io_context,
@@ -161,8 +161,6 @@ protected:
 
 //------------------------------------------------------------------------------
 // QuicheMailbox
-
-class QuicheConnection;
 
 enum class BodyDataType {
     Unknown,
@@ -239,7 +237,7 @@ struct DataStream {
 
 using OnConnectCallback = std::function<void(uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint)>;
 using OnTimeoutCallback = std::function<void(uint64_t connection_id)>;
-using OnDataCallback = std::function<void(uint64_t connection_id, const QuicheMailbox::Event& event)>;
+using OnDataCallback = std::function<void(const QuicheMailbox::Event& event)>;
 
 struct QCSettings {
     // Identifier assigned to this connection by the server
@@ -261,6 +259,10 @@ public:
     ~QuicheConnection();
 
     void Initialize(const QCSettings& settings);
+
+    uint64_t GetId() const {
+        return settings_.AssignedId;
+    }
 
     bool IsClosed() const {
         return timeout_;
@@ -300,6 +302,8 @@ public:
 
     bool ComparePeerCertificate(const void* cert_cer_data, int bytes);
 
+    void Close();
+
 protected:
     std::recursive_mutex mutex_;
     quiche_conn* conn_ = nullptr;
@@ -337,14 +341,16 @@ public:
     QuicheSender(std::shared_ptr<QuicheSocket> qs);
     ~QuicheSender();
 
-    void Add(const ConnectionId& dcid, std::shared_ptr<QuicheConnection> connection);
+    void Add(const ConnectionId& dcid, uint64_t connection_id, std::shared_ptr<QuicheConnection> connection);
     std::shared_ptr<QuicheConnection> Find(const ConnectionId& dcid);
+    std::shared_ptr<QuicheConnection> Find(uint64_t connection_id);
 
 protected:
     std::mutex mutex_;
 
     std::shared_ptr<QuicheSocket> qs_;
     QuicheConnectionMap connections_;
+    std::unordered_map<uint64_t, std::shared_ptr<QuicheConnection>> connections_by_id_;
 
     std::shared_ptr<std::thread> send_thread_;
     std::atomic<bool> terminated_ = ATOMIC_VAR_INIT(false);
