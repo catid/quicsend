@@ -38,12 +38,9 @@ QuicSendServer::~QuicSendServer() {
 }
 
 void QuicSendServer::Close(uint64_t connection_id) {
-    // FIXME
-    auto conn = sender_->Find(ConnectionId{});  // You need to maintain a mapping from connection_id to ConnectionId
+    auto conn = sender_->Find(connection_id);
     if (conn) {
-        conn->settings_.on_timeout(connection_id);
-        // Remove the connection from the sender
-        sender_->Remove(conn->settings_.dcid);
+        conn->Close();
     }
 }
 
@@ -54,14 +51,15 @@ int64_t QuicSendServer::Request(
     const void* data,
     int bytes)
 {
-    // FIXME
-    auto conn = sender_->Find(ConnectionId{});  // You need to maintain a mapping from connection_id to ConnectionId
+    auto conn = sender_->Find(connection_id);
     if (!conn) {
         return -1;
     }
 
+    const char* method = bytes > 0 ? "PUT" : "GET";
+
     std::vector<std::pair<std::string, std::string>> headers = {
-        {":method", "GET"},
+        {":method", method},
         {":path", path},
         {"user-agent", "quicsend"},
         {"content-type", BodyDataTypeToString(type)},
@@ -71,50 +69,37 @@ int64_t QuicSendServer::Request(
         headers.push_back({"content-length", std::to_string(bytes)});
     }
 
-    int64_t stream_id = conn->SendRequest(
-        [this, connection_id](DataStream& stream) {
-            QuicheMailbox::Event event;
-            event.ConnectionId = connection_id;
-            event.IsResponse = true;
-            event.Id = stream.Id;
-            event.Path = stream.Path;
-            event.Type = stream.ContentType;
-            event.Buffer = stream.Buffer;
-            mailbox_.Post(event);
-        },
+    return conn->SendRequest(
         headers,
         data,
         bytes
     );
-
-    return stream_id;
 }
 
-void QuicSendServer::Poll(
+bool QuicSendServer::Poll(
     OnConnectCallback on_connect,
     OnTimeoutCallback on_timeout,
     OnDataCallback on_data,
     int timeout_msec)
 {
-    // FIXME
-    mailbox_.Poll([&](const QuicheMailbox::Event& event) {
-        if (event.IsResponse) {
-            on_data(event.ConnectionId, event);
-        } else {
-            // This is a new connection event
-            on_connect(event.ConnectionId, 
-                sender_->Find(ConnectionId{})->peer_endpoint_);  // You need to maintain a mapping
-        }
-    }, timeout_msec);
-
-    // Check for timeouts
-    auto connections = sender_->GetConnections();  // You need to add this method to QuicheSender
-    for (const auto& pair : connections) {
-        if (pair.second->IsClosed()) {
-            on_timeout(pair.second->settings_.AssignedId);
-            sender_->Remove(pair.first);
-        }
+    if (closed_) {
+        return false;
     }
+
+    mailbox_.Poll(on_data, timeout_msec);
+
+    std::vector<uint64_t> timeouts;
+    std::vector<ConnectEvent> connects;
+    sender_->Poll(timeouts, connects);
+
+    for (const auto& timeout : timeouts) {
+        on_timeout(timeout);
+    }
+    for (const auto& connect : connects) {
+        on_connect(connect.connection_id, connect.peer_endpoint);
+    }
+
+    return true;
 }
 
 void QuicSendServer::OnDatagram(
@@ -237,31 +222,15 @@ std::shared_ptr<QuicheConnection> QuicSendServer::create_conn(
     qcs.on_connect = [this](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
         LOG_INFO() << "*** Connection established: " << connection_id << " " << peer_endpoint.address().to_string();
     };
-    QuicheConnection* qcp = qc.get();
-    qcs.on_data = [this, qcp](const QuicheMailbox::Event& event) {
+    qcs.on_data = [this](const QuicheMailbox::Event& event) {
         mailbox_.Post(event);
     };
 
-    qc->Initialize(settings);
+    qc->Initialize(qcs);
     if (!qc->Accept(peer_endpoint, dcid, odcid)) {
         return nullptr;
     }
-    sender_->Add(dcid, qc);
+
+    sender_->Add(qc);
     return qc;
-}
-
-void QuicSendServer::OnRequest(QuicheConnection* qcp, DataStream& stream) {
-    LOG_INFO() << "*** [" << stream.Id << "] Requested " << stream.Method
-        << ": " << stream.Path << " " << stream.Buffer->size() << " bytes";
-
-    std::string data(1024 * 1024 * 1024, 'A');
-
-    const std::vector<std::pair<std::string, std::string>> headers = {
-        {":status", "200"},
-        {"user-agent", "quiche"},
-        {"content-type", "application/octet-stream"},
-        {"content-length", std::to_string(data.size())}
-    };
-
-    qcp->SendResponse(stream.Id, headers, data.c_str(), data.size());
 }

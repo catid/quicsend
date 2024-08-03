@@ -39,16 +39,8 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
         Close();
     };
     qcs.on_connect = [this](int32_t /*connection_id*/, const boost::asio::ip::udp::endpoint& /*peer_endpoint*/) {
-        LOG_INFO() << "*** Connection established";
-        if (cert_der_.empty()) {
-            LOG_WARN() << "No peer certificate file provided to check";
-        } else if (!connection_->ComparePeerCertificate(cert_der_.data(), cert_der_.size())) {
-            LOG_ERROR() << "Peer certificate does not match";
-            Close();
-            return;
-        } else {
-            LOG_INFO() << "Verified peer certificate";
-            connected_ = true;
+        if (connection_->ComparePeerCertificate(cert_der_.data(), cert_der_.size())) {
+            LOG_INFO() << "*** Connection established";
         }
     };
     qcs.on_data = [this](const QuicheMailbox::Event& event) {
@@ -61,7 +53,7 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
         [this](const boost::system::error_code& ec, boost::asio::ip::udp::resolver::results_type results) {
             if (!ec) {
                 resolved_endpoint_ = *results.begin();
-                sender_->Add(connection_->settings_.dcid, connection_);
+                sender_->Add(connection_);
                 if (!connection_->Connect(resolved_endpoint_)) {
                     Close();
                     return;
@@ -104,21 +96,8 @@ int64_t QuicSendClient::Request(
     int bytes)
 {
     if (closed_) {
-        return;
+        return -1;
     }
-
-    auto response_callback = [this](DataStream& stream) {
-        QuicheMailbox::Event event;
-        event.IsResponse = true;
-        event.Id = stream.Id;
-        event.Type = stream.ContentType;
-        event.Connection = connection_;
-        event.Buffer = stream.Buffer;
-
-        mailbox_.Post(event);
-
-        stream.Buffer = nullptr;
-    };
 
     if (!data || bytes == 0) {
         const std::vector<std::pair<std::string, std::string>> headers = {
@@ -130,7 +109,7 @@ int64_t QuicSendClient::Request(
             {"content-length", "0"}
         };
 
-        return connection_->SendRequest(response_callback, headers);
+        return connection_->SendRequest(headers);
     }
 
     const std::vector<std::pair<std::string, std::string>> headers = {
@@ -143,7 +122,7 @@ int64_t QuicSendClient::Request(
         {"content-length", std::to_string(bytes)}
     };
 
-    return connection_->SendRequest(response_callback, headers, data, bytes);
+    return connection_->SendRequest(headers, data, bytes);
 }
 
 void QuicSendClient::Poll(
@@ -152,22 +131,7 @@ void QuicSendClient::Poll(
     OnDataCallback on_data,
     int timeout_msec)
 {
-    if (closed_) {
-        if (!reported_timeout_) {
-            on_timeout();
-            reported_timeout_ = true;
-        }
-        return;
-    }
-
-    if (!connected_) {
-        return;
-    }
-
-    if (!reported_connect_) {
-        on_connect();
-        reported_connect_ = true;
-    }
-
     mailbox_.Poll(on_data, timeout_msec);
+
+    connection_->Poll(on_connect, on_timeout);
 }

@@ -175,7 +175,7 @@ BodyDataType BodyDataTypeFromString(const std::string& type);
 class QuicheMailbox {
 public:
     struct Event {
-        uint64_t ConnectionId = 0;
+        uint64_t ConnectionAssignedId = 0;
         bool IsResponse = false; // else it's a response
         uint64_t Id = MAX_QUIC_STREAMS;
 
@@ -204,8 +204,6 @@ protected:
 // DataStream
 
 struct DataStream;
-
-using ResponseCallback = std::function<void(DataStream& stream)>;
 
 // Receives data from the network and buffers it
 struct DataStream {
@@ -260,10 +258,6 @@ public:
 
     void Initialize(const QCSettings& settings);
 
-    uint64_t GetId() const {
-        return settings_.AssignedId;
-    }
-
     bool IsClosed() const {
         return timeout_;
     }
@@ -281,7 +275,6 @@ public:
 
     // Returns the stream id or -1 on failure
     int64_t SendRequest(
-        ResponseCallback on_response,
         const std::vector<std::pair<std::string, std::string>>& headers,
         const void* data = nullptr,
         int bytes = 0);
@@ -304,6 +297,9 @@ public:
 
     void Close();
 
+    // Returns true if the connection is still connected
+    bool Poll(OnConnectCallback on_connect, OnTimeoutCallback on_timeout);
+
 protected:
     std::recursive_mutex mutex_;
     quiche_conn* conn_ = nullptr;
@@ -311,6 +307,8 @@ protected:
 
     std::atomic<bool> reported_timeout_ = ATOMIC_VAR_INIT(false);
     std::atomic<bool> reported_connect_ = ATOMIC_VAR_INIT(false);
+
+    std::atomic<bool> connected_ = ATOMIC_VAR_INIT(false);
 
     std::shared_ptr<boost::asio::deadline_timer> quiche_timer_;
     std::atomic<bool> timeout_ = ATOMIC_VAR_INIT(false);
@@ -334,6 +332,11 @@ protected:
 //------------------------------------------------------------------------------
 // QuicheSender
 
+struct ConnectEvent {
+    uint64_t connection_id;
+    boost::asio::ip::udp::endpoint peer_endpoint;
+};
+
 using QuicheConnectionMap = std::unordered_map<ConnectionId, std::shared_ptr<QuicheConnection>, ConnectionIdHash>;
 
 class QuicheSender {
@@ -341,9 +344,11 @@ public:
     QuicheSender(std::shared_ptr<QuicheSocket> qs);
     ~QuicheSender();
 
-    void Add(const ConnectionId& dcid, uint64_t connection_id, std::shared_ptr<QuicheConnection> connection);
+    void Add(std::shared_ptr<QuicheConnection> connection);
     std::shared_ptr<QuicheConnection> Find(const ConnectionId& dcid);
     std::shared_ptr<QuicheConnection> Find(uint64_t connection_id);
+
+    void Poll(std::vector<uint64_t>& timeouts, std::vector<ConnectEvent>& connects);
 
 protected:
     std::mutex mutex_;

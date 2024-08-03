@@ -1,38 +1,12 @@
-#include <quicsend_client.hpp>
-#include <quicsend_server.hpp>
+#include <quicsend_python.h>
 
 extern "C" {
 
 
 //------------------------------------------------------------------------------
-// C API
-
-struct PythonRequestData {
-    uint64_t ConnectionId;
-    bool IsResponse;
-    int64_t RequestId;
-
-    const char* Path;
-    const char* ContentType;
-    const uint8_t* Data;
-    int32_t Length;
-};
-
-typedef void (*connect_callback)(uint64_t connection_id, const char* peer_endpoint);
-typedef void (*timeout_callback)(uint64_t connection_id);
-typedef void (*data_callback)(PythonRequestData data);
-
-
-//------------------------------------------------------------------------------
 // C API : QuicSendClient
 
-struct PythonClientSettings {
-    const char* Host;
-    uint16_t Port;
-    const char* CertPath;
-};
-
-QuicSendClient* quicsend_client_create(const PythonClientSettings* settings)
+QuicSendClient* quicsend_client_create(const PythonQuicSendClientSettings* settings)
 {
     QuicSendClientSettings cs;
     cs.Host = settings->Host;
@@ -62,13 +36,13 @@ int64_t quicsend_client_request(
     return client->Request(path, BodyDataTypeFromString(content_type), data, bytes);
 }
 
-void quicsend_client_poll(QuicSendClient *client,
+int32_t quicsend_client_poll(QuicSendClient *client,
                           connect_callback on_connect,
                           timeout_callback on_timeout,
                           data_callback on_data,
                           int32_t timeout_msec) {
-    if (client == NULL) {
-        return;
+    if (client == NULL || !client->IsRunning()) {
+        return 0;
     }
 
     auto fn_connect = [&](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
@@ -87,16 +61,16 @@ void quicsend_client_poll(QuicSendClient *client,
 
         on_timeout(connection_id);
     };
-    auto fn_data = [&](uint64_t connection_id, const QuicheMailbox::Event& event) {
+    auto fn_data = [&](const QuicheMailbox::Event& event) {
         if (!on_data) {
             return;
         }
         std::string content_type = BodyDataTypeToString(event.Type);
 
         PythonRequestData data;
-        data.ConnectionId = connection_id;
+        data.ConnectionAssignedId = event.ConnectionAssignedId;
         data.RequestId = event.Id;
-        data.IsResponse = event.IsResponse;
+        data.b_IsResponse = event.IsResponse ? 1 : 0;
 
         data.Path = event.Path.c_str();
         data.ContentType = content_type.c_str();
@@ -112,19 +86,15 @@ void quicsend_client_poll(QuicSendClient *client,
     };
 
     client->Poll(fn_connect, fn_timeout, fn_data, timeout_msec);
+
+    return 1;
 }
 
 
 //------------------------------------------------------------------------------
 // C API : QuicSendServer
 
-struct PythonServerSettings {
-    const char* Host;
-    uint16_t Port;
-    const char* CertPath;
-};
-
-QuicSendServer* quicsend_server_create(const QuicSendServerSettings* settings)
+QuicSendServer* quicsend_server_create(const PythonQuicSendServerSettings* settings)
 {
     QuicSendServerSettings ss;
     ss.Port = settings->Port;
@@ -134,33 +104,34 @@ QuicSendServer* quicsend_server_create(const QuicSendServerSettings* settings)
     return new QuicSendServer(ss);
 }
 
-void quicsend_server_destroy(QuicSendServer *client) {
-    if (client != NULL) {
-        delete client;
+void quicsend_server_destroy(QuicSendServer *server) {
+    if (server != NULL) {
+        delete server;
     }
 }
 
 int64_t quicsend_server_request(
-    QuicSendServer *client,
+    QuicSendServer *server,
+    uint64_t connection_id,
     const char* path,
     const char* content_type,
     const void* data,
     int32_t bytes)
 {
-    if (client == NULL) {
-        return;
+    if (server == NULL) {
+        return -1;
     }
 
-    return client->Request(path, BodyDataTypeFromString(content_type), data, bytes);
+    return server->Request(connection_id, path, BodyDataTypeFromString(content_type), data, bytes);
 }
 
-void quicsend_server_poll(QuicSendServer *client,
+int32_t quicsend_server_poll(QuicSendServer *server,
                           connect_callback on_connect,
                           timeout_callback on_timeout,
                           data_callback on_data,
                           int32_t timeout_msec) {
-    if (client == NULL) {
-        return;
+    if (server == NULL || !server->IsRunning()) {
+        return 0;
     }
 
     auto fn_connect = [&](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
@@ -179,16 +150,16 @@ void quicsend_server_poll(QuicSendServer *client,
 
         on_timeout(connection_id);
     };
-    auto fn_data = [&](uint64_t connection_id, const QuicheMailbox::Event& event) {
+    auto fn_data = [&](const QuicheMailbox::Event& event) {
         if (!on_data) {
             return;
         }
         std::string content_type = BodyDataTypeToString(event.Type);
 
         PythonRequestData data;
-        data.ConnectionId = connection_id;
+        data.ConnectionAssignedId = event.ConnectionAssignedId;
         data.RequestId = event.Id;
-        data.IsResponse = event.IsResponse;
+        data.b_IsResponse = event.IsResponse ? 1 : 0;
 
         data.Path = event.Path.c_str();
         data.ContentType = content_type.c_str();
@@ -203,7 +174,8 @@ void quicsend_server_poll(QuicSendServer *client,
         on_data(data);
     };
 
-    client->Poll(fn_connect, fn_timeout, fn_data, timeout_msec);
+    server->Poll(fn_connect, fn_timeout, fn_data, timeout_msec);
+    return 1;
 }
 
 

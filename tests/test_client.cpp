@@ -1,59 +1,66 @@
-#include <quicsend_client.hpp>
+#include <quicsend_python.h>
+
+
+//------------------------------------------------------------------------------
+// CTRL+C
+
+#include <csignal>
+#include <atomic>
+
+static std::atomic<bool> running(true);
+
+static void signalHandler(int signum) {
+    LOG_INFO() << "Interrupt signal (" << signum << ") received.";
+    running = false;
+}
+
 
 //------------------------------------------------------------------------------
 // Entrypoint
 
-bool QuicSendClient::SendExampleRequest() {
-    std::string data(1024 * 1024 * 1024, 'A');
-
-    const std::vector<std::pair<std::string, std::string>> headers = {
-        {":method", "PUT"},
-        {":scheme", "https"},
-        {":authority", settings_.Host},
-        {":path", "/"},
-        {"user-agent", "quiche"},
-        {"content-type", "application/octet-stream"},
-        {"content-length", std::to_string(data.size())}
-    };
-
-    auto fn = [this](DataStream& stream) {
-        LOG_INFO() << "*** [" << stream.Id << "] Response " << stream.Buffer->size() << " bytes";
-    };
-
-    return connection_->SendRequest(fn, headers, data.c_str(), data.size());
-}
+QuicSendClient* m_client = nullptr;
 
 int main(int argc, char* argv[]) {
 #ifdef ENABLE_QUICHE_DEBUG_LOGGING
     EnableQuicheDebugLogging();
 #endif // ENABLE_QUICHE_DEBUG_LOGGING
 
-    const char* host = argc >= 2 ? argv[1] : "localhost";
-    const char* port_str = argc >= 3 ? argv[2] : "4433";
+    std::string host = argc >= 2 ? argv[1] : "localhost";
+    std::string port_str = argc >= 3 ? argv[2] : "4433";
     uint16_t port = std::stoi(port_str);
+    std::string cert_path = argc >= 4 ? argv[3] : "server.pem";
+
+    std::signal(SIGINT, signalHandler);
 
     try {
-        QuicSendClientSettings settings;
-        settings.Host = host;
+        PythonQuicSendClientSettings settings;
+        settings.Host = host.c_str();
         settings.Port = port;
-        settings.CertPath = "server.pem";
+        settings.CertPath = cert_path.c_str();
 
-        QuicSendClient client(settings);
+        m_client = quicsend_client_create(&settings);
 
-        auto OnTimeout = []() {
-            LOG_INFO() << "*** Connection timed out";
+        auto OnConnect = [](uint64_t connection_id, const char* peer_endpoint) {
+            LOG_INFO() << "OnConnect: " << connection_id << " " << peer_endpoint;
+
+            quicsend_client_request(m_client, "simple.txt", nullptr, nullptr, 0);
         };
-        auto OnConnect = []() {
-            LOG_INFO() << "*** Connection established";
+        auto OnTimeout = [](uint64_t connection_id) {
+            LOG_INFO() << "OnTimeout: " << connection_id;
         };
-        auto OnRequest = [](DataStream& stream) {
-            LOG_INFO() << "*** [" << stream.Id << "] Received " << stream.Method
-                << ": " << stream.Path << " " << stream.Buffer->size() << " bytes";
+        auto OnData = [](PythonRequestData data) {
+            LOG_INFO() << "OnData: " << data.ConnectionAssignedId << " " << data.RequestId << " " << data.b_IsResponse << " " << data.Path << " " << data.ContentType << " " << data.Length;
         };
 
-        while (client.IsRunning()) {
-            client.Poll(OnConnect, OnTimeout, OnRequest);
+        for (;;) {
+            int32_t r = quicsend_client_poll(m_client, OnConnect, OnTimeout, OnData, 100);
+
+            if (r == 0) {
+                break;
+            }
         }
+
+        quicsend_client_destroy(m_client);
     } catch (std::exception& e) {
         LOG_ERROR() << "Exception: " << e.what();
         return -1;

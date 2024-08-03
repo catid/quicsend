@@ -660,7 +660,7 @@ void QuicheConnection::OnDatagram(
                 return;
             }
 
-            settings_.on_connect(settings_.AssignedId);
+            settings_.on_connect(settings_.AssignedId, peer_endpoint_);
         }
 
         ProcessH3Events();
@@ -683,6 +683,27 @@ void QuicheConnection::Close() {
     if (!timeout_) {
         quiche_conn_close(conn_, true, 0, nullptr, 0);
     }
+}
+
+bool QuicheConnection::Poll(OnConnectCallback on_connect, OnTimeoutCallback on_timeout) {
+    if (timeout_) {
+        if (!reported_timeout_) {
+            on_timeout(settings_.AssignedId);
+            reported_timeout_ = true;
+        }
+        return false;
+    }
+
+    if (!connected_) {
+        return false;
+    }
+
+    if (!reported_connect_) {
+        on_connect(settings_.AssignedId, peer_endpoint_);
+        reported_connect_ = true;
+    }
+
+    return true;
 }
 
 void QuicheConnection::TickTimeout() {
@@ -834,14 +855,18 @@ void QuicheConnection::ProcessH3Events() {
                     return;
                 }
 
-                QuicheMailbox::Event event;
-                event.IsResponse = stream.IsResponse;
-                event.Id = stream.Id;
-                event.Type = stream.ContentType;
-                event.ConnectionId = settings_.AssignedId;
-                event.Buffer = stream.Buffer;
+                if (connected_) {
+                    QuicheMailbox::Event event;
+                    event.IsResponse = stream.IsResponse;
+                    event.Id = stream.Id;
+                    event.Type = stream.ContentType;
+                    event.ConnectionAssignedId = settings_.AssignedId;
+                    event.Buffer = stream.Buffer;
 
-                settings_.on_data(settings_.AssignedId, event);
+                    settings_.on_data(event);
+                } else {
+                    LOG_ERROR() << "Ignored data received before connection established";
+                }
 
                 stream.Reset();
                 break;
@@ -870,7 +895,6 @@ void QuicheConnection::ProcessH3Events() {
 }
 
 int64_t QuicheConnection::SendRequest(
-    ResponseCallback on_response,
     const std::vector<std::pair<std::string, std::string>>& headers,
     const void* data,
     int bytes)
@@ -1028,9 +1052,15 @@ bool QuicheConnection::ComparePeerCertificate(const void* cert_cer_data, int byt
     quiche_conn_peer_cert(conn_, &peer_cert, &peer_cert_len);
 
     if ((int)peer_cert_len != bytes ||
-        memcmp(peer_cert, cert_cer_data, peer_cert_len) != 0) {
+        memcmp(peer_cert, cert_cer_data, peer_cert_len) != 0)
+    {
+        const char* reason = "Peer certificate does not match";
+        LOG_ERROR() << "Connection aborted: " << reason;
+        quiche_conn_close(conn_, true, 0, (const uint8_t*)reason, strlen(reason));
         return false;
     }
+
+    connected_ = true;
 
     return true;
 }
@@ -1077,7 +1107,7 @@ void QuicheSender::Loop() {
                     it = connections_.erase(it);
 
                     // Remove from connections_by_id_
-                    auto conn_it = connections_by_id_.find(connection->GetId());
+                    auto conn_it = connections_by_id_.find(connection->settings_.AssignedId);
                     if (conn_it != connections_by_id_.end()) {
                         connections_by_id_.erase(conn_it);
                     }
@@ -1101,7 +1131,11 @@ void QuicheSender::Loop() {
     }
 }
 
-void QuicheSender::Add(const ConnectionId& dcid, uint64_t connection_id, std::shared_ptr<QuicheConnection> qc) {
+void QuicheSender::Add(std::shared_ptr<QuicheConnection> qc) {
+
+    ConnectionId dcid = qc->settings_.dcid;
+    uint64_t connection_id = qc->settings_.AssignedId;
+
     std::lock_guard<std::mutex> lock(mutex_);
 
     connections_[dcid] = qc;
@@ -1126,6 +1160,19 @@ std::shared_ptr<QuicheConnection> QuicheSender::Find(uint64_t connection_id) {
         return nullptr;
     }
     return conn_it->second;
+}
+
+void QuicheSender::Poll(std::vector<uint64_t>& timeouts, std::vector<ConnectEvent>& connects) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    for (const auto& pair : connections_) {
+        pair.second->Poll([&](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
+            connects.push_back({connection_id, peer_endpoint});
+        },
+        [&](uint64_t connection_id) {
+            timeouts.push_back(connection_id);
+        });
+    }
 }
 
 

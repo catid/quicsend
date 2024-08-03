@@ -32,7 +32,8 @@ public:
         const void* data,
         int bytes);
 
-    void Poll(
+    // Returns false if the server is closed
+    bool Poll(
         OnConnectCallback on_connect,
         OnTimeoutCallback on_timeout,
         OnDataCallback on_data,
@@ -59,7 +60,6 @@ protected:
         const ConnectionId& dcid,
         const ConnectionId& odcid,
         const boost::asio::ip::udp::endpoint& peer_endpoint);
-    void OnRequest(QuicheConnection* qcp, DataStream& stream);
 
     boost::asio::io_context io_context_;
 

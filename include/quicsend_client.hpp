@@ -52,6 +52,4 @@ private:
 
     std::shared_ptr<std::thread> loop_thread_;
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);
-
-    std::atomic<bool> connected_ = ATOMIC_VAR_INIT(false);
 };
