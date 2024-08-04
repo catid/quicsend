@@ -33,6 +33,7 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
     connection_ = std::make_shared<QuicheConnection>();
 
     QCSettings qcs;
+    qcs.IsServer = false;
     qcs.qs = qs_;
     qcs.dcid = ConnectionId();
     qcs.on_timeout = [this](uint64_t connection_id) {

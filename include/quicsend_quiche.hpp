@@ -20,7 +20,7 @@
 #define LOCAL_CONN_ID_LEN 16
 #define MAX_DATAGRAM_SEND_SIZE 1350
 #define MAX_DATAGRAM_RECV_SIZE 1400 * 2
-#define MAX_QUIC_STREAMS 8
+#define MAX_PARALLEL_QUIC_STREAMS 8
 #define INITIAL_MAX_DATA 8 * 1024 * 1024
 #define INITIAL_MAX_STREAM_DATA 1 * 1024 * 1024
 #define QUIC_IDLE_TIMEOUT_MSEC 5000
@@ -28,7 +28,7 @@
 #define QUIC_SEND_SLOW_INTERVAL_MSEC 20
 #define QUIC_SEND_FAST_INTERVAL_MSEC 10
 #define QUIC_CONNECT_TIMEOUT_MSEC 3000
-#define QUIC_TLS_CNAME "catid.io"
+#define QUIC_TLS_CNAME "catid.io" /* MUST match key generation on CLI */
 #define QUICSEND_CLIENT_AGENT "quicsend-client"
 #define QUICSEND_SERVER_AGENT "quicsend-server"
 
@@ -168,6 +168,32 @@ struct BodyData {
 
 
 //------------------------------------------------------------------------------
+// IncomingStream
+
+struct IncomingStream {
+    uint64_t Id = 0;
+
+    std::string Method, Path, Status, Authorization, ContentType;
+
+    std::vector<uint8_t> Buffer;
+
+    void OnHeader(const std::string& name, const std::string& value);
+    void OnData(const void* data, size_t bytes);
+};
+
+
+//------------------------------------------------------------------------------
+// OutgoingStream
+
+struct OutgoingStream {
+    uint64_t Id = 0;
+
+    int SendOffset = 0;
+    std::vector<uint8_t> Buffer;
+};
+
+
+//------------------------------------------------------------------------------
 // QuicheMailbox
 
 class QuicheMailbox {
@@ -176,24 +202,16 @@ public:
         Invalid,
         Connect,
         Timeout,
-        Request,
-        Response,
+        Data,
     };
 
     struct Event {
         EventType Type = EventType::Invalid;
 
         boost::asio::ip::udp::endpoint PeerEndpoint;
-
         uint64_t ConnectionAssignedId = 0;
-        uint64_t Id = MAX_QUIC_STREAMS;
 
-        std::string Authorization;
-        std::string Path;
-        std::string Status;
-        std::string ContentType;
-
-        std::shared_ptr<std::vector<uint8_t>> Buffer;
+        std::shared_ptr<IncomingStream> Stream;
     };
 
     using MailboxCallback = std::function<void(const Event& event)>;
@@ -213,35 +231,6 @@ protected:
 
 
 //------------------------------------------------------------------------------
-// DataStream
-
-struct DataStream;
-
-// Receives data from the network and buffers it
-struct DataStream {
-    uint64_t Id = MAX_QUIC_STREAMS;
-    bool IsResponse = false;
-
-    bool Sending = false;
-    int SendOffset = 0;
-    std::vector<uint8_t> OutgoingBuffer;
-
-    bool Finished = false;
-    std::shared_ptr<std::vector<uint8_t>> Buffer;
-
-    std::string Method, Path, Status, Authorization, ContentType;
-
-    void OnHeader(const std::string& name, const std::string& value);
-    void OnData(const void* data, size_t bytes);
-
-    // Returns true on the first finished event for this stream
-    bool OnFinished();
-
-    void Reset();
-};
-
-
-//------------------------------------------------------------------------------
 // Connection State
 
 using OnConnectCallback = std::function<void(uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint)>;
@@ -249,6 +238,10 @@ using OnTimeoutCallback = std::function<void(uint64_t connection_id)>;
 using OnDataCallback = std::function<void(const QuicheMailbox::Event& event)>;
 
 struct QCSettings {
+    // The server can only receive requests and send responses.
+    // The client can only send requests and receive responses.
+    bool IsServer = false;
+
     // Identifier assigned to this connection by the server
     uint64_t AssignedId = 0;
 
@@ -335,13 +328,21 @@ protected:
 
     boost::asio::ip::udp::endpoint peer_endpoint_;
 
-    DataStream streams_[MAX_QUIC_STREAMS];
+    std::unordered_map<uint64_t, std::shared_ptr<IncomingStream>> incoming_streams_by_id_;
+    std::unordered_map<uint64_t, std::shared_ptr<OutgoingStream>> outgoing_streams_by_id_;
+
+    uint64_t highest_processed_stream_id_ = 0;
+    std::atomic<bool> goaway_sent_ = ATOMIC_VAR_INIT(false);
 
     // Called from function with lock held
     bool SendBody(uint64_t stream_id, const void* data, int bytes);
     void ProcessH3Events();
     void TickTimeout();
     void FlushTransfers();
+
+    std::shared_ptr<IncomingStream> GetIncomingStream(uint64_t stream_id, bool create = true);
+    std::shared_ptr<OutgoingStream> GetOutgoingStream(uint64_t stream_id, bool create = true);
+    void DestroyStream(uint64_t stream_id);
 };
 
 

@@ -197,6 +197,7 @@ std::shared_ptr<QuicheConnection> QuicSendServer::CreateConnection(
     std::shared_ptr<QuicheConnection> qc = std::make_shared<QuicheConnection>();
 
     QCSettings qcs;
+    qcs.IsServer = true;
     qcs.AssignedId = ++next_assigned_id_;
     qcs.qs = qs_;
     qcs.dcid = dcid;
@@ -215,7 +216,7 @@ std::shared_ptr<QuicheConnection> QuicSendServer::CreateConnection(
     QuicheConnection* qc_weak = qc.get();
     qcs.on_data = [this, qc_weak](const QuicheMailbox::Event& event) {
         if (!qc_weak->IsConnected()) {
-            if (event.Authorization != settings_.Authorization) {
+            if (event.Stream->Authorization != settings_.Authorization) {
                 LOG_WARN() << "*** Link closed: Invalid auth token";
                 qc_weak->Close("invalid auth token");
                 return;

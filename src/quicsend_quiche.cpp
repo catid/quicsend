@@ -73,8 +73,8 @@ quiche_config* CreateQuicheConfig(
     quiche_config_set_initial_max_stream_data_bidi_remote(config, INITIAL_MAX_STREAM_DATA);
     quiche_config_set_initial_max_stream_data_uni(config, INITIAL_MAX_STREAM_DATA);
 
-    quiche_config_set_initial_max_streams_bidi(config, MAX_QUIC_STREAMS);
-    quiche_config_set_initial_max_streams_uni(config, MAX_QUIC_STREAMS);
+    quiche_config_set_initial_max_streams_bidi(config, MAX_PARALLEL_QUIC_STREAMS);
+    quiche_config_set_initial_max_streams_uni(config, MAX_PARALLEL_QUIC_STREAMS);
 
     // Disable active migration to avoid unnecessary delays.
     // This feature is only useful for mobile clients.
@@ -483,12 +483,10 @@ void QuicheSocket::Send(
 
 
 //------------------------------------------------------------------------------
-// DataStream
+// IncomingStream
 
-void DataStream::OnHeader(const std::string& name, const std::string& value)
+void IncomingStream::OnHeader(const std::string& name, const std::string& value)
 {
-    //LOG_INFO() << "Header: " << name << ": " << value;
-
     if (name == ":method") {
         Method = value;
     } else if (name == ":path") {
@@ -502,35 +500,10 @@ void DataStream::OnHeader(const std::string& name, const std::string& value)
     }
 }
 
-void DataStream::OnData(const void* data, size_t bytes)
+void IncomingStream::OnData(const void* data, size_t bytes)
 {
     const uint8_t* data8 = reinterpret_cast<const uint8_t*>(data);
-
-    if (!Buffer) {
-        Buffer = std::make_shared<std::vector<uint8_t>>();
-    }
-
-    Buffer->insert(Buffer->end(), data8, data8 + bytes);
-}
-
-bool DataStream::OnFinished()
-{
-    if (Finished) {
-        return false;
-    }
-    Finished = true;
-    return true;
-}
-
-void DataStream::Reset()
-{
-    Method.clear();
-    Path.clear();
-    Status.clear();
-    Authorization.clear();
-    ContentType.clear();
-    Buffer = nullptr;
-    IsResponse = false;
+    Buffer.insert(Buffer.end(), data8, data8 + bytes);
 }
 
 
@@ -539,10 +512,6 @@ void DataStream::Reset()
 
 void QuicheConnection::Initialize(const QCSettings& settings)
 {
-    for (int i = 0; i < MAX_QUIC_STREAMS; i++) {
-        streams_[i].Id = i;
-    }
-
     settings_ = settings;
 
     connection_timer_ = std::make_shared<boost::asio::deadline_timer>(
@@ -684,6 +653,14 @@ void QuicheConnection::Close(const char* reason) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     if (!timeout_) {
+        if (http3_) {
+            int r = quiche_h3_send_goaway(http3_, conn_, highest_processed_stream_id_);
+            if (r >= 0) {
+                return;
+            }
+            goaway_sent_ = true;
+        }
+
         quiche_conn_close(conn_, true, 0, (const uint8_t*)reason, strlen(reason));
     }
 }
@@ -781,16 +758,16 @@ void QuicheConnection::ProcessH3Events() {
         } else if (stream_id < 0) {
             LOG_ERROR() << "quiche_h3_conn_poll failed: " << stream_id << " " << quiche_h3_error_to_string(stream_id);
             break;
-        } else if (stream_id >= MAX_QUIC_STREAMS) {
-            continue;
         }
         CallbackScope ev_scope([ev]() { quiche_h3_event_free(ev); });
 
         switch (quiche_h3_event_type(ev)) {
             case QUICHE_H3_EVENT_HEADERS: {
+                auto stream = GetIncomingStream(stream_id);
+
                 using cb_t = std::function<bool(const std::string&, const std::string&)>;
-                cb_t cb = [this, stream_id](const std::string& name, const std::string& value) -> bool {
-                    streams_[stream_id].OnHeader(name, value);
+                cb_t cb = [this, stream](const std::string& name, const std::string& value) -> bool {
+                    stream->OnHeader(name, value);
                     return true; // Return false to stop iterating
                 };
 
@@ -810,6 +787,8 @@ void QuicheConnection::ProcessH3Events() {
             }
 
             case QUICHE_H3_EVENT_DATA: {
+                auto stream = GetIncomingStream(stream_id);
+
                 for (;;) {
                     auto& buffer = settings_.qs->body_buf_;
                     ssize_t len = quiche_h3_recv_body(
@@ -822,7 +801,7 @@ void QuicheConnection::ProcessH3Events() {
                         break;
                     }
                     if (len > 0) {
-                        streams_[stream_id].OnData(buffer.data(), len);
+                        stream->OnData(buffer.data(), len);
                     } else {
                         LOG_ERROR() << "*** quiche_h3_recv_body failed: " << len << " " << quiche_error_to_string(len);
                     }
@@ -831,39 +810,33 @@ void QuicheConnection::ProcessH3Events() {
             }
 
             case QUICHE_H3_EVENT_FINISHED: {
-                DataStream& stream = streams_[stream_id];
+                std::shared_ptr<IncomingStream> stream;
 
-                if (!stream.OnFinished()) {
-                    return;
+                auto it = incoming_streams_by_id_.find(stream_id);
+                if (it != incoming_streams_by_id_.end()) {
+                    stream = it->second;
+                } else {
+                    break; // Ignore FINISHED events for streams that have been destroyed
                 }
+                incoming_streams_by_id_.erase(it);
 
                 QuicheMailbox::Event event;
-                if (stream.IsResponse) {
-                    event.Type = QuicheMailbox::EventType::Response;
-                } else {
-                    event.Type = QuicheMailbox::EventType::Request;
-                }
+                event.Type = QuicheMailbox::EventType::Data;
                 event.PeerEndpoint = peer_endpoint_;
-
                 event.ConnectionAssignedId = settings_.AssignedId;
-                event.Id = stream.Id;
-
-                event.Authorization = stream.Authorization;
-                event.Path = stream.Path;
-                event.Status = stream.Status;
-
-                event.ContentType = stream.ContentType;
-                event.Buffer = stream.Buffer;
+                event.Stream = stream;
 
                 settings_.on_data(event);
 
-                stream.Reset();
+                // After client gets a response, destroy the stream
+                if (!settings_.IsServer) {
+                    DestroyStream(stream_id);
+                }
                 break;
             }
 
             case QUICHE_H3_EVENT_RESET: {
-                // Stream reset
-                streams_[stream_id].Reset();
+                DestroyStream(stream_id);
                 break;
             }
 
@@ -871,15 +844,71 @@ void QuicheConnection::ProcessH3Events() {
                 break;
 
             case QUICHE_H3_EVENT_GOAWAY: {
+                // Note: stream_id is invalid here:
+                // The event GoAway returns an ID that depends on the connection role. A client receives the largest processed stream ID. A server receives the the largest permitted push ID.
                 const char* reason = "Received GOAWAY";
                 LOG_INFO() << "Connection aborted: " << reason;
                 quiche_conn_close(conn_, true, 0, (const uint8_t*)reason, strlen(reason));
+                // FIXME: Better way to do this?
                 break;
             }
 
             default:
                 break;
         }
+    }
+}
+
+std::shared_ptr<IncomingStream> QuicheConnection::GetIncomingStream(uint64_t stream_id, bool create) {
+    // Called from function with lock held
+
+    auto it = incoming_streams_by_id_.find(stream_id);
+    if (it != incoming_streams_by_id_.end()) {
+        return it->second;
+    }
+
+    if (!create) {
+        return nullptr;
+    }
+
+    auto stream = std::make_shared<IncomingStream>();
+    stream->Id = stream_id;
+    incoming_streams_by_id_[stream_id] = stream;
+    return stream;
+}
+
+std::shared_ptr<OutgoingStream> QuicheConnection::GetOutgoingStream(uint64_t stream_id, bool create) {
+    // Called from function with lock held
+
+    auto it = outgoing_streams_by_id_.find(stream_id);
+    if (it != outgoing_streams_by_id_.end()) {
+        return it->second;
+    }
+
+    if (!create) {
+        return nullptr;
+    }
+
+    auto stream = std::make_shared<OutgoingStream>();
+    stream->Id = stream_id;
+    outgoing_streams_by_id_[stream_id] = stream;
+    return stream;
+}
+
+void QuicheConnection::DestroyStream(uint64_t stream_id) {
+    // Called from function with lock held
+
+    quiche_conn_stream_shutdown(conn_, stream_id, QUICHE_SHUTDOWN_READ, 0);
+    quiche_conn_stream_shutdown(conn_, stream_id, QUICHE_SHUTDOWN_WRITE, 0);
+
+    auto it = incoming_streams_by_id_.find(stream_id);
+    if (it != incoming_streams_by_id_.end()) {
+        incoming_streams_by_id_.erase(it);
+    }
+
+    auto ot = outgoing_streams_by_id_.find(stream_id);
+    if (ot != outgoing_streams_by_id_.end()) {
+        outgoing_streams_by_id_.erase(ot);
     }
 }
 
@@ -915,7 +944,8 @@ int64_t QuicheConnection::SendRequest(
                 (bytes <= 0)/*fin*/);
 
             // If request is blocked by flow control:
-            if (stream_id == QUICHE_H3_ERR_STREAM_BLOCKED && quiche_conn_is_established(conn_)) {
+            if ((stream_id == QUICHE_H3_ERR_STREAM_BLOCKED || stream_id == QUICHE_H3_TRANSPORT_ERR_STREAM_LIMIT)
+                && quiche_conn_is_established(conn_)) { 
                 // Sleep for a while to allow flow control to drain and retry (below)
             } else {
                 if (stream_id < 0) {
@@ -923,7 +953,6 @@ int64_t QuicheConnection::SendRequest(
                     return -1;
                 }
 
-                streams_[stream_id].IsResponse = true; // This stream will be used for a response later
                 SendBody(stream_id, data, bytes);
                 return stream_id;
             }
@@ -978,7 +1007,6 @@ bool QuicheConnection::SendResponse(
                     return false;
                 }
 
-                streams_[stream_id].IsResponse = false;
                 return SendBody(stream_id, data, bytes);
             }
         }
@@ -993,7 +1021,9 @@ bool QuicheConnection::SendResponse(
 bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes) {
     // Called from function with lock held
 
-    if (bytes > 0) {
+    if (bytes <= 0) {
+        //quiche_conn_stream_shutdown(conn_, stream_id, QUICHE_SHUTDOWN_WRITE, 0);
+    } else {
         const uint8_t* data = reinterpret_cast<const uint8_t*>(vdata);
         ssize_t rc = quiche_h3_send_body(http3_, conn_, stream_id, 
                                  data, bytes,
@@ -1005,12 +1035,11 @@ bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes
         }
 
         if (rc < bytes) {
-            streams_[stream_id].Sending = true;
-            streams_[stream_id].SendOffset = 0;
-            streams_[stream_id].OutgoingBuffer.assign(data + rc, data + bytes);
+            auto stream = GetOutgoingStream(stream_id);
+            stream->SendOffset = 0;
+            stream->Buffer.assign(data + rc, data + bytes);
         } else {
-            streams_[stream_id].Sending = false;
-            rc = quiche_h3_send_body(http3_, conn_, stream_id, 
+            rc = quiche_h3_send_body(http3_, conn_, stream_id,
                                     nullptr, 0/*empty*/,
                                     true/*fin*/);
             if (rc < 0) {
@@ -1027,43 +1056,65 @@ bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes
 void QuicheConnection::FlushTransfers() {
     // Called from function with lock held
 
-    for (uint64_t stream_id = 0; stream_id < MAX_QUIC_STREAMS; stream_id++) {
-        if (!streams_[stream_id].Sending) {
-            continue;
-        }
+    std::vector<uint64_t> completed_stream_ids;
 
-        const int send_offset = streams_[stream_id].SendOffset;
-        const int remaining = streams_[stream_id].OutgoingBuffer.size() - send_offset;
+    for (auto& stream_pair : outgoing_streams_by_id_) {
+        auto& stream = stream_pair.second;
+        const int send_offset = stream->SendOffset;
+        const int remaining = stream->Buffer.size() - send_offset;
 
+        // If we are retrying to send the FIN:
         if (remaining <= 0) {
-            LOG_ERROR() << "[" << stream_id << "] Sending continued body: nothing to send";
-            streams_[stream_id].Sending = false;
+            ssize_t r = quiche_h3_send_body(http3_, conn_, stream->Id,
+                                    nullptr, 0/*empty*/,
+                                    true/*fin*/);
+            if (r < 0) {
+                // Failures here mean there is no room for more data
+                break;
+            }
+
+            completed_stream_ids.push_back(stream->Id);
             continue;
         }
 
-        ssize_t rc = quiche_h3_send_body(http3_, conn_, stream_id, 
-                                 streams_[stream_id].OutgoingBuffer.data() + send_offset,
+        ssize_t r = quiche_h3_send_body(http3_, conn_, stream->Id,
+                                 stream->Buffer.data() + send_offset,
                                  remaining,
                                  false/*fin*/);
-        if (rc < 0) {
+        if (r < 0) {
             // Failures here mean there is no room for more data
             break;
         }
 
-        if (rc < remaining) {
-            streams_[stream_id].SendOffset += rc;
+        if (r < remaining) {
+            stream->SendOffset += r;
             continue;
         }
 
-        rc = quiche_h3_send_body(http3_, conn_, stream_id, 
+        // No more data to send
+        stream->Buffer.clear();
+        stream->SendOffset = 0;
+
+        // Try to send FIN
+        r = quiche_h3_send_body(http3_, conn_, stream->Id,
                                 nullptr, 0/*empty*/,
                                 true/*fin*/);
-        if (rc < 0) {
-            LOG_ERROR() << "Failed to send continued body(0): " << rc;
+        if (r < 0) {
+            // Failures here mean there is no room for more data
+            break;
         }
 
-        streams_[stream_id].Sending = false;
-        streams_[stream_id].OutgoingBuffer.clear();
+        completed_stream_ids.push_back(stream->Id);
+
+        //quiche_conn_stream_shutdown(conn_, stream_id, QUICHE_SHUTDOWN_WRITE, 0);
+    }
+
+    // Erase completed streams
+    for (auto stream_id : completed_stream_ids) {
+        auto it = outgoing_streams_by_id_.find(stream_id);
+        if (it != outgoing_streams_by_id_.end()) {
+            outgoing_streams_by_id_.erase(it);
+        }
     }
 }
 

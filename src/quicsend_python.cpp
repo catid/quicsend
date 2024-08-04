@@ -15,40 +15,38 @@ static void route_event(
         on_connect(event.ConnectionAssignedId, addr_str.c_str());
     } else if (event.Type == QuicheMailbox::EventType::Timeout) {
         on_timeout(event.ConnectionAssignedId);
-    } else if (event.Type == QuicheMailbox::EventType::Request) {
-        PythonRequest request;
-        request.ConnectionAssignedId = event.ConnectionAssignedId;
-        request.RequestId = event.Id;
-
-        request.Path = event.Path.c_str();
-        request.Body.ContentType = event.ContentType.c_str();
-        if (!event.Buffer) {
-            request.Body.Data = nullptr;
-            request.Body.Length = 0;
-        } else {
-            request.Body.Data = event.Buffer->data();
-            request.Body.Length = event.Buffer->size();
-        }
-
+    } else if (event.Type == QuicheMailbox::EventType::Data) {
         if (on_request) {
+            PythonRequest request;
+            request.ConnectionAssignedId = event.ConnectionAssignedId;
+            request.RequestId = event.Stream->Id;
+
+            request.Path = event.Stream->Path.c_str();
+            request.Body.ContentType = event.Stream->ContentType.c_str();
+            if (event.Stream->Buffer.empty()) {
+                request.Body.Data = nullptr;
+                request.Body.Length = 0;
+            } else {
+                request.Body.Data = event.Stream->Buffer.data();
+                request.Body.Length = event.Stream->Buffer.size();
+            }
+
             on_request(request);
-        }
-    } else if (event.Type == QuicheMailbox::EventType::Response) {
-        PythonResponse response;
-        response.ConnectionAssignedId = event.ConnectionAssignedId;
-        response.RequestId = event.Id;
+        } else if (on_response) {
+            PythonResponse response;
+            response.ConnectionAssignedId = event.ConnectionAssignedId;
+            response.RequestId = event.Stream->Id;
 
-        response.Status = std::atoi(event.Status.c_str());
-        response.Body.ContentType = event.ContentType.c_str();
-        if (!event.Buffer) {
-            response.Body.Data = nullptr;
-            response.Body.Length = 0;
-        } else {
-            response.Body.Data = event.Buffer->data();
-            response.Body.Length = event.Buffer->size();
-        }
+            response.Status = std::atoi(event.Stream->Status.c_str());
+            response.Body.ContentType = event.Stream->ContentType.c_str();
+            if (event.Stream->Buffer.empty()) {
+                response.Body.Data = nullptr;
+                response.Body.Length = 0;
+            } else {
+                response.Body.Data = event.Stream->Buffer.data();
+                response.Body.Length = event.Stream->Buffer.size();
+            }
 
-        if (on_response) {
             on_response(response);
         }
     }
