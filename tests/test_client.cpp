@@ -34,6 +34,7 @@ int main(int argc, char* argv[]) {
 
     try {
         PythonQuicSendClientSettings settings;
+        settings.AuthToken = "AUTH_TOKEN_PLACEHOLDER";
         settings.Host = host.c_str();
         settings.Port = port;
         settings.CertPath = cert_path.c_str();

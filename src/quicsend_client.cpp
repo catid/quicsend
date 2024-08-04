@@ -44,7 +44,9 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
         }
     };
     qcs.on_data = [this](const QuicheMailbox::Event& event) {
-        mailbox_.Post(event);
+        if (connection_->IsConnected()) {
+            mailbox_.Post(event);
+        }
     };
 
     connection_->Initialize(qcs);
@@ -104,7 +106,7 @@ int64_t QuicSendClient::Request(
             {":authority", settings_.Host},
             {":path", path},
             {"user-agent", QUICSEND_CLIENT_AGENT},
-            {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+            {"Authorization", settings_.Authorization},
         };
 
         return connection_->SendRequest(headers);
@@ -116,7 +118,7 @@ int64_t QuicSendClient::Request(
         {":authority", settings_.Host},
         {":path", path},
         {"user-agent", QUICSEND_CLIENT_AGENT},
-        {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+        {"Authorization", std::string("Bearer ") + settings_.Authorization},
         {"content-type", body.ContentType},
         {"content-length", std::to_string(body.Length)},
     };
@@ -137,7 +139,7 @@ void QuicSendClient::Respond(
         const std::vector<std::pair<std::string, std::string>> headers = {
             {":status", std::to_string(status)},
             {"server", QUICSEND_CLIENT_AGENT},
-            {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+            {"Authorization", std::string("Bearer ") + settings_.Authorization},
         };
 
         connection_->SendResponse(request_id, headers);
@@ -147,7 +149,7 @@ void QuicSendClient::Respond(
     const std::vector<std::pair<std::string, std::string>> headers = {
         {":status", std::to_string(status)},
         {"server", QUICSEND_CLIENT_AGENT},
-        {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+        {"Authorization", std::string("Bearer ") + settings_.Authorization},
         {"content-type", body.ContentType},
         {"content-length", std::to_string(body.Length)},
     };

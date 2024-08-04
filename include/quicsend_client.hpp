@@ -8,7 +8,7 @@
 // HTTP/3 Client
 
 struct QuicSendClientSettings {
-    std::string AuthToken;
+    std::string Authorization;
     std::string Host;
     uint16_t Port;
     std::string CertPath;

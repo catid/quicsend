@@ -122,17 +122,18 @@ bool QuicSendServer::Poll(
         return false;
     }
 
-    mailbox_.Poll(on_data, timeout_msec);
-
     std::vector<uint64_t> timeouts;
     std::vector<ConnectEvent> connects;
     sender_->Poll(timeouts, connects);
 
-    for (const auto& timeout : timeouts) {
-        on_timeout(timeout);
-    }
     for (const auto& connect : connects) {
         on_connect(connect.connection_id, connect.peer_endpoint);
+    }
+
+    mailbox_.Poll(on_data, timeout_msec);
+
+    for (const auto& timeout : timeouts) {
+        on_timeout(timeout);
     }
 
     return true;
@@ -261,13 +262,13 @@ std::shared_ptr<QuicheConnection> QuicSendServer::CreateConnection(
     QuicheConnection* qc_weak = qc.get();
     qcs.on_data = [this, qc_weak](const QuicheMailbox::Event& event) {
         if (!qc_weak->IsConnected()) {
-            if (event.AuthKey == settings_.AuthToken) {
-                qc_weak->MarkClientConnected();
-            } else {
+            if (event.Authorization != settings_.Authorization) {
                 LOG_WARN() << "*** Link closed: Invalid auth token";
                 qc_weak->Close("invalid auth token");
                 return;
             }
+
+            qc_weak->MarkClientConnected();
         }
         mailbox_.Post(event);
     };

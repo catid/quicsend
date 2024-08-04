@@ -496,7 +496,7 @@ void DataStream::OnHeader(const std::string& name, const std::string& value)
     } else if (name == ":status") {
         Status = value;
     } else if (name == "Authorization") {
-        AuthKey = value;
+        Authorization = value;
     } else if (name == "content-type") {
         ContentType = BodyDataTypeFromString(value);
     }
@@ -527,7 +527,7 @@ void DataStream::Reset()
     Method.clear();
     Path.clear();
     Status.clear();
-    AuthKey.clear();
+    Authorization.clear();
     ContentType = BodyDataType::Unknown;
     Buffer = nullptr;
     IsResponse = false;
@@ -858,18 +858,20 @@ void QuicheConnection::ProcessH3Events() {
                     return;
                 }
 
-                if (connected_) {
-                    QuicheMailbox::Event event;
-                    event.IsResponse = stream.IsResponse;
-                    event.Id = stream.Id;
-                    event.Type = stream.ContentType;
-                    event.ConnectionAssignedId = settings_.AssignedId;
-                    event.Buffer = stream.Buffer;
+                QuicheMailbox::Event event;
+                event.IsResponse = stream.IsResponse;
 
-                    settings_.on_data(event);
-                } else {
-                    LOG_ERROR() << "Ignored data received before connection established";
-                }
+                event.ConnectionAssignedId = settings_.AssignedId;
+                event.Id = stream.Id;
+
+                event.Authorization = stream.Authorization;
+                event.Path = stream.Path;
+                event.Status = stream.Status;
+
+                event.Type = stream.ContentType;
+                event.Buffer = stream.Buffer;
+
+                settings_.on_data(event);
 
                 stream.Reset();
                 break;

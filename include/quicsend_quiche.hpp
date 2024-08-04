@@ -187,9 +187,10 @@ public:
         uint64_t ConnectionAssignedId = 0;
         uint64_t Id = MAX_QUIC_STREAMS;
 
-        std::string AuthKey;
+        std::string Authorization;
         std::string Path;
         std::string Status;
+
         BodyDataType Type = BodyDataType::Unknown;
         std::shared_ptr<std::vector<uint8_t>> Buffer;
     };
@@ -227,7 +228,7 @@ struct DataStream {
     bool Finished = false;
     std::shared_ptr<std::vector<uint8_t>> Buffer;
 
-    std::string Method, Path, Status, AuthKey;
+    std::string Method, Path, Status, Authorization;
     BodyDataType ContentType = BodyDataType::Unknown;
 
     void OnHeader(const std::string& name, const std::string& value);

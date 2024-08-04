@@ -65,7 +65,7 @@ extern "C" {
 QuicSendClient* quicsend_client_create(const PythonQuicSendClientSettings* settings)
 {
     QuicSendClientSettings cs;
-    cs.AuthToken = settings->AuthToken;
+    cs.Authorization = std::string("Bearer ") + settings->AuthToken;
     cs.Host = settings->Host;
     cs.Port = settings->Port;
     cs.CertPath = settings->CertPath;
@@ -146,7 +146,7 @@ void quicsend_client_respond(
 QuicSendServer* quicsend_server_create(const PythonQuicSendServerSettings* settings)
 {
     QuicSendServerSettings ss;
-    ss.AuthToken = settings->AuthToken;
+    ss.Authorization = std::string("Bearer ") + settings->AuthToken;
     ss.Port = settings->Port;
     ss.KeyPath = settings->KeyPath;
     ss.CertPath = settings->CertPath;
