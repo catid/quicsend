@@ -42,19 +42,27 @@ int main(int argc, char* argv[]) {
         m_client = quicsend_client_create(&settings);
 
         auto OnConnect = [](uint64_t connection_id, const char* peer_endpoint) {
-            LOG_INFO() << "OnConnect: " << connection_id << " " << peer_endpoint;
+            LOG_INFO() << "OnConnect: cid=" << connection_id << " addr=" << peer_endpoint;
 
             PythonBody body{};
             quicsend_client_request(m_client, "simple.txt", &body);
         };
         auto OnTimeout = [](uint64_t connection_id) {
-            LOG_INFO() << "OnTimeout: " << connection_id;
+            LOG_INFO() << "OnTimeout: cid=" << connection_id;
         };
         auto OnRequest = [](PythonRequest request) { 
-            LOG_INFO() << "OnRequest: " << request.ConnectionAssignedId << " " << request.RequestId << " " << request.Path << " " << request.Body.ContentType << " " << request.Body.Length;
+            LOG_INFO() << "OnRequest: cid=" << request.ConnectionAssignedId << " rid=" << request.RequestId << " path=" << request.Path << " ct=" << request.Body.ContentType << " len=" << request.Body.Length;
+
+            std::vector<char> response(16*1024*1024, 'B');
+
+            PythonBody body{};
+            body.ContentType = "text/plain";
+            body.Data = (const uint8_t*)response.data();
+            body.Length = (int32_t)response.size();
+            quicsend_client_respond(m_client, request.RequestId, 200, &body);
         };
         auto OnResponse = [](PythonResponse response) {
-            LOG_INFO() << "OnResponse: " << response.ConnectionAssignedId << " " << response.RequestId << " " << response.Status << " " << response.Body.ContentType << " " << response.Body.Length;
+            LOG_INFO() << "OnResponse: cid=" << response.ConnectionAssignedId << " rid=" << response.RequestId << " status=" << response.Status << " ct=" << response.Body.ContentType << " len=" << response.Body.Length;
         };
 
         while (!m_terminated) {

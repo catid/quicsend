@@ -35,12 +35,25 @@ QuicSendClient::QuicSendClient(const QuicSendClientSettings& settings)
     QCSettings qcs;
     qcs.qs = qs_;
     qcs.dcid = ConnectionId();
-    qcs.on_timeout = [this](int32_t /*connection_id*/) {
+    qcs.on_timeout = [this](uint64_t connection_id) {
         Close();
+
+        // Queue timeout event
+        QuicheMailbox::Event event;
+        event.Type = QuicheMailbox::EventType::Timeout;
+        event.ConnectionAssignedId = connection_id;
+        mailbox_.Post(event);
     };
-    qcs.on_connect = [this](int32_t /*connection_id*/, const boost::asio::ip::udp::endpoint& /*peer_endpoint*/) {
+    qcs.on_connect = [this](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) { 
         if (connection_->ComparePeerCertificate(cert_der_.data(), cert_der_.size())) {
             LOG_INFO() << "*** Connection established";
+
+            // Queue connect event
+            QuicheMailbox::Event event;
+            event.Type = QuicheMailbox::EventType::Connect;
+            event.ConnectionAssignedId = connection_id;
+            event.PeerEndpoint = peer_endpoint;
+            mailbox_.Post(event);
         }
     };
     qcs.on_data = [this](const QuicheMailbox::Event& event) {
@@ -155,15 +168,4 @@ void QuicSendClient::Respond(
     };
 
     connection_->SendResponse(request_id, headers, body.Data, body.Length);
-}
-
-void QuicSendClient::Poll(
-    OnConnectCallback on_connect,
-    OnTimeoutCallback on_timeout,
-    OnDataCallback on_data,
-    int timeout_msec)
-{
-    mailbox_.Poll(on_data, timeout_msec);
-
-    connection_->Poll(on_connect, on_timeout);
 }

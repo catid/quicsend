@@ -3,37 +3,25 @@
 //------------------------------------------------------------------------------
 // Tools
 
-static void route_data(const QuicheMailbox::Event& event, request_callback on_request, response_callback on_response) {
-    std::string content_type = BodyDataTypeToString(event.Type);
-
-    if (event.IsResponse)
-    {
-        PythonResponse response;
-        response.ConnectionAssignedId = event.ConnectionAssignedId;
-        response.RequestId = event.Id;
-
-        response.Status = std::atoi(event.Status.c_str());
-        response.Body.ContentType = content_type.c_str();
-        if (!event.Buffer) {
-            response.Body.Data = nullptr;
-            response.Body.Length = 0;
-        } else {
-            response.Body.Data = event.Buffer->data();
-            response.Body.Length = event.Buffer->size();
-        }
-
-        if (on_response) {
-            on_response(response);
-        }
-    }
-    else
-    {
+static void route_event(
+    const QuicheMailbox::Event& event,
+    connect_callback on_connect,
+    timeout_callback on_timeout,
+    request_callback on_request,
+    response_callback on_response)
+{
+    if (event.Type == QuicheMailbox::EventType::Connect) {
+        std::string addr_str = EndpointToString(event.PeerEndpoint);
+        on_connect(event.ConnectionAssignedId, addr_str.c_str());
+    } else if (event.Type == QuicheMailbox::EventType::Timeout) {
+        on_timeout(event.ConnectionAssignedId);
+    } else if (event.Type == QuicheMailbox::EventType::Request) {
         PythonRequest request;
         request.ConnectionAssignedId = event.ConnectionAssignedId;
         request.RequestId = event.Id;
 
         request.Path = event.Path.c_str();
-        request.Body.ContentType = content_type.c_str();
+        request.Body.ContentType = event.ContentType.c_str();
         if (!event.Buffer) {
             request.Body.Data = nullptr;
             request.Body.Length = 0;
@@ -44,6 +32,24 @@ static void route_data(const QuicheMailbox::Event& event, request_callback on_re
 
         if (on_request) {
             on_request(request);
+        }
+    } else if (event.Type == QuicheMailbox::EventType::Response) {
+        PythonResponse response;
+        response.ConnectionAssignedId = event.ConnectionAssignedId;
+        response.RequestId = event.Id;
+
+        response.Status = std::atoi(event.Status.c_str());
+        response.Body.ContentType = event.ContentType.c_str();
+        if (!event.Buffer) {
+            response.Body.Data = nullptr;
+            response.Body.Length = 0;
+        } else {
+            response.Body.Data = event.Buffer->data();
+            response.Body.Length = event.Buffer->size();
+        }
+
+        if (on_response) {
+            on_response(response);
         }
     }
 }
@@ -104,24 +110,11 @@ int32_t quicsend_client_poll(
         return 0;
     }
 
-    auto fn_connect = [&](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
-        std::string addr_str = EndpointToString(peer_endpoint);
-
-        if (on_connect) {
-            on_connect(connection_id, addr_str.c_str());
-        }
-    };
-    auto fn_timeout = [&](uint64_t connection_id) {
-        if (on_timeout) {
-            on_timeout(connection_id);
-        }
-    };
-    auto fn_data = [&](const QuicheMailbox::Event& event) {
-        route_data(event, on_request, on_response);
+    auto fn_event = [&](const QuicheMailbox::Event& event) {
+        route_event(event, on_connect, on_timeout, on_request, on_response);
     };
 
-    client->Poll(fn_connect, fn_timeout, fn_data, timeout_msec);
-
+    client->mailbox_.Poll(fn_event, timeout_msec);
     return 1;
 }
 
@@ -186,23 +179,11 @@ int32_t quicsend_server_poll(
         return 0;
     }
 
-    auto fn_connect = [&](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
-        std::string addr_str = EndpointToString(peer_endpoint);
-
-        if (on_connect) {
-            on_connect(connection_id, addr_str.c_str());
-        }
-    };
-    auto fn_timeout = [&](uint64_t connection_id) {
-        if (on_timeout) {
-            on_timeout(connection_id);
-        }
-    };
-    auto fn_data = [&](const QuicheMailbox::Event& event) {
-        route_data(event, on_request, on_response);
+    auto fn_event = [&](const QuicheMailbox::Event& event) {
+        route_event(event, on_connect, on_timeout, on_request, on_response);
     };
 
-    server->Poll(fn_connect, fn_timeout, fn_data, timeout_msec);
+    server->Poll(fn_event, timeout_msec);
     return 1;
 }
 

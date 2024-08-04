@@ -156,15 +156,6 @@ protected:
 //------------------------------------------------------------------------------
 // BodyData
 
-enum class BodyDataType {
-    Unknown,
-    Text,
-    Binary
-};
-
-const char* BodyDataTypeToString(BodyDataType type);
-BodyDataType BodyDataTypeFromString(const std::string& type);
-
 struct BodyData {
     const char* ContentType;
     const uint8_t* Data;
@@ -181,8 +172,18 @@ struct BodyData {
 
 class QuicheMailbox {
 public:
+    enum class EventType {
+        Invalid,
+        Connect,
+        Timeout,
+        Request,
+        Response,
+    };
+
     struct Event {
-        bool IsResponse = false; // else it's a response
+        EventType Type = EventType::Invalid;
+
+        boost::asio::ip::udp::endpoint PeerEndpoint;
 
         uint64_t ConnectionAssignedId = 0;
         uint64_t Id = MAX_QUIC_STREAMS;
@@ -190,8 +191,8 @@ public:
         std::string Authorization;
         std::string Path;
         std::string Status;
+        std::string ContentType;
 
-        BodyDataType Type = BodyDataType::Unknown;
         std::shared_ptr<std::vector<uint8_t>> Buffer;
     };
 
@@ -228,8 +229,7 @@ struct DataStream {
     bool Finished = false;
     std::shared_ptr<std::vector<uint8_t>> Buffer;
 
-    std::string Method, Path, Status, Authorization;
-    BodyDataType ContentType = BodyDataType::Unknown;
+    std::string Method, Path, Status, Authorization, ContentType;
 
     void OnHeader(const std::string& name, const std::string& value);
     void OnData(const void* data, size_t bytes);
@@ -324,9 +324,6 @@ protected:
     quiche_conn* conn_ = nullptr;
     quiche_h3_conn* http3_ = nullptr;
 
-    std::atomic<bool> reported_timeout_ = ATOMIC_VAR_INIT(false);
-    std::atomic<bool> reported_connect_ = ATOMIC_VAR_INIT(false);
-
     std::atomic<bool> connected_ = ATOMIC_VAR_INIT(false);
 
     std::shared_ptr<boost::asio::deadline_timer> quiche_timer_;
@@ -366,8 +363,6 @@ public:
     void Add(std::shared_ptr<QuicheConnection> connection);
     std::shared_ptr<QuicheConnection> Find(const ConnectionId& dcid);
     std::shared_ptr<QuicheConnection> Find(uint64_t connection_id);
-
-    void Poll(std::vector<uint64_t>& timeouts, std::vector<ConnectEvent>& connects);
 
 protected:
     std::mutex mutex_;

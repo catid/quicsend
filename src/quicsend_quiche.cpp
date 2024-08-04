@@ -498,7 +498,7 @@ void DataStream::OnHeader(const std::string& name, const std::string& value)
     } else if (name == "Authorization") {
         Authorization = value;
     } else if (name == "content-type") {
-        ContentType = BodyDataTypeFromString(value);
+        ContentType = value;
     }
 }
 
@@ -528,7 +528,7 @@ void DataStream::Reset()
     Path.clear();
     Status.clear();
     Authorization.clear();
-    ContentType = BodyDataType::Unknown;
+    ContentType.clear();
     Buffer = nullptr;
     IsResponse = false;
 }
@@ -688,27 +688,6 @@ void QuicheConnection::Close(const char* reason) {
     }
 }
 
-bool QuicheConnection::Poll(OnConnectCallback on_connect, OnTimeoutCallback on_timeout) {
-    if (timeout_) {
-        if (!reported_timeout_) {
-            on_timeout(settings_.AssignedId);
-            reported_timeout_ = true;
-        }
-        return false;
-    }
-
-    if (!connected_) {
-        return false;
-    }
-
-    if (!reported_connect_) {
-        on_connect(settings_.AssignedId, peer_endpoint_);
-        reported_connect_ = true;
-    }
-
-    return true;
-}
-
 void QuicheConnection::TickTimeout() {
     // Called from function with lock held
 
@@ -859,7 +838,12 @@ void QuicheConnection::ProcessH3Events() {
                 }
 
                 QuicheMailbox::Event event;
-                event.IsResponse = stream.IsResponse;
+                if (stream.IsResponse) {
+                    event.Type = QuicheMailbox::EventType::Response;
+                } else {
+                    event.Type = QuicheMailbox::EventType::Request;
+                }
+                event.PeerEndpoint = peer_endpoint_;
 
                 event.ConnectionAssignedId = settings_.AssignedId;
                 event.Id = stream.Id;
@@ -868,7 +852,7 @@ void QuicheConnection::ProcessH3Events() {
                 event.Path = stream.Path;
                 event.Status = stream.Status;
 
-                event.Type = stream.ContentType;
+                event.ContentType = stream.ContentType;
                 event.Buffer = stream.Buffer;
 
                 settings_.on_data(event);
@@ -1167,43 +1151,9 @@ std::shared_ptr<QuicheConnection> QuicheSender::Find(uint64_t connection_id) {
     return conn_it->second;
 }
 
-void QuicheSender::Poll(std::vector<uint64_t>& timeouts, std::vector<ConnectEvent>& connects) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    for (const auto& pair : connections_) {
-        pair.second->Poll([&](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
-            connects.push_back({connection_id, peer_endpoint});
-        },
-        [&](uint64_t connection_id) {
-            timeouts.push_back(connection_id);
-        });
-    }
-}
-
 
 //------------------------------------------------------------------------------
 // QuicheMailbox
-
-const char* BodyDataTypeToString(BodyDataType type) {
-    switch (type) {
-    case BodyDataType::Text:
-        return "application/text";
-    case BodyDataType::Binary:
-        return "application/octet-stream";
-    default:
-        return "application/unknown";
-    }
-}
-
-BodyDataType BodyDataTypeFromString(const std::string& type) {
-    if (type == "application/text") {
-        return BodyDataType::Text;
-    } else if (type == "application/octet-stream") {
-        return BodyDataType::Binary;
-    } else {
-        return BodyDataType::Unknown;
-    }
-}
 
 void QuicheMailbox::Shutdown()
 {

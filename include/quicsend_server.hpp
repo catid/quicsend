@@ -37,11 +37,8 @@ public:
         int32_t status,
         BodyData body);
 
-    // Returns false if the server is closed
-    bool Poll(
-        OnConnectCallback on_connect,
-        OnTimeoutCallback on_timeout,
-        OnDataCallback on_data,
+    void Poll(
+        OnDataCallback on_event,
         int timeout_msec = 100);
 
 protected:

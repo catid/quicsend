@@ -112,31 +112,11 @@ void QuicSendServer::Respond(
     conn->SendResponse(request_id, headers, body.Data, body.Length);
 }
 
-bool QuicSendServer::Poll(
-    OnConnectCallback on_connect,
-    OnTimeoutCallback on_timeout,
-    OnDataCallback on_data,
+void QuicSendServer::Poll(
+    OnDataCallback on_event,
     int timeout_msec)
 {
-    if (closed_) {
-        return false;
-    }
-
-    std::vector<uint64_t> timeouts;
-    std::vector<ConnectEvent> connects;
-    sender_->Poll(timeouts, connects);
-
-    for (const auto& connect : connects) {
-        on_connect(connect.connection_id, connect.peer_endpoint);
-    }
-
-    mailbox_.Poll(on_data, timeout_msec);
-
-    for (const auto& timeout : timeouts) {
-        on_timeout(timeout);
-    }
-
-    return true;
+    mailbox_.Poll(on_event, timeout_msec);
 }
 
 void QuicSendServer::OnDatagram(
@@ -255,6 +235,12 @@ std::shared_ptr<QuicheConnection> QuicSendServer::CreateConnection(
     qcs.dcid = dcid;
     qcs.on_timeout = [this, dcid](uint64_t connection_id) {
         LOG_INFO() << "*** Link timeout: " << connection_id;
+
+        // Queue timeout event
+        QuicheMailbox::Event event;
+        event.Type = QuicheMailbox::EventType::Timeout;
+        event.ConnectionAssignedId = connection_id;
+        mailbox_.Post(event);
     };
     qcs.on_connect = [this](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
         LOG_INFO() << "*** Link established: " << connection_id << " " << EndpointToString(peer_endpoint);
@@ -269,7 +255,15 @@ std::shared_ptr<QuicheConnection> QuicSendServer::CreateConnection(
             }
 
             qc_weak->MarkClientConnected();
+
+            // Queue connect event
+            QuicheMailbox::Event event;
+            event.Type = QuicheMailbox::EventType::Connect;
+            event.ConnectionAssignedId = event.ConnectionAssignedId;
+            event.PeerEndpoint = event.PeerEndpoint;
+            mailbox_.Post(event);
         }
+
         mailbox_.Post(event);
     };
 

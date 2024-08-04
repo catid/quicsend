@@ -29,11 +29,7 @@ public:
         const std::string& path,
         BodyData body);
 
-    void Poll(
-        OnConnectCallback on_connect,
-        OnTimeoutCallback on_timeout,
-        OnDataCallback on_request,
-        int timeout_msec = 100);
+    QuicheMailbox mailbox_;
 
     void Respond(
         int64_t request_id,
@@ -52,7 +48,6 @@ private:
     std::shared_ptr<QuicheSocket> qs_;
     std::shared_ptr<QuicheConnection> connection_;
     std::shared_ptr<QuicheSender> sender_;
-    QuicheMailbox mailbox_;
 
     std::shared_ptr<std::thread> loop_thread_;
     std::atomic<bool> closed_ = ATOMIC_VAR_INIT(false);
