@@ -7,11 +7,11 @@
 #include <csignal>
 #include <atomic>
 
-static std::atomic<bool> running(true);
+static std::atomic<bool> m_terminated = ATOMIC_VAR_INIT(false);
 
 static void signalHandler(int signum) {
     LOG_INFO() << "Interrupt signal (" << signum << ") received.";
-    running = false;
+    m_terminated = true;
 }
 
 
@@ -43,17 +43,21 @@ int main(int argc, char* argv[]) {
         auto OnConnect = [](uint64_t connection_id, const char* peer_endpoint) {
             LOG_INFO() << "OnConnect: " << connection_id << " " << peer_endpoint;
 
-            quicsend_client_request(m_client, "simple.txt", nullptr, nullptr, 0);
+            PythonBody body{};
+            quicsend_client_request(m_client, "simple.txt", &body);
         };
         auto OnTimeout = [](uint64_t connection_id) {
             LOG_INFO() << "OnTimeout: " << connection_id;
         };
-        auto OnData = [](PythonRequestData data) {
-            LOG_INFO() << "OnData: " << data.ConnectionAssignedId << " " << data.RequestId << " " << data.b_IsResponse << " " << data.Path << " " << data.ContentType << " " << data.Length;
+        auto OnRequest = [](PythonRequest request) { 
+            LOG_INFO() << "OnRequest: " << request.ConnectionAssignedId << " " << request.RequestId << " " << request.Path << " " << request.Body.ContentType << " " << request.Body.Length;
+        };
+        auto OnResponse = [](PythonResponse response) {
+            LOG_INFO() << "OnResponse: " << response.ConnectionAssignedId << " " << response.RequestId << " " << response.Status << " " << response.Body.ContentType << " " << response.Body.Length;
         };
 
-        for (;;) {
-            int32_t r = quicsend_client_poll(m_client, OnConnect, OnTimeout, OnData, 100);
+        while (!m_terminated) {
+            int32_t r = quicsend_client_poll(m_client, OnConnect, OnTimeout, OnRequest, OnResponse, 100);
 
             if (r == 0) {
                 break;

@@ -7,16 +7,18 @@
 #include <csignal>
 #include <atomic>
 
-static std::atomic<bool> running(true);
+static std::atomic<bool> m_terminated = ATOMIC_VAR_INIT(false);
 
 static void signalHandler(int signum) {
     LOG_INFO() << "Interrupt signal (" << signum << ") received.";
-    running = false;
+    m_terminated = true;
 }
 
 
 //------------------------------------------------------------------------------
 // Entrypoint
+
+QuicSendServer* m_server = nullptr;
 
 int main(int argc, char* argv[]) {
 #ifdef ENABLE_QUICHE_DEBUG_LOGGING
@@ -36,7 +38,7 @@ int main(int argc, char* argv[]) {
         settings.CertPath = cert_path.c_str();
         settings.KeyPath = key_path.c_str();
 
-        QuicSendServer* server = quicsend_server_create(&settings);
+        m_server = quicsend_server_create(&settings);
 
         auto OnConnect = [](uint64_t connection_id, const char* peer_endpoint) {
             LOG_INFO() << "OnConnect: " << connection_id << " " << peer_endpoint;
@@ -44,19 +46,22 @@ int main(int argc, char* argv[]) {
         auto OnTimeout = [](uint64_t connection_id) {
             LOG_INFO() << "OnTimeout: " << connection_id;
         };
-        auto OnData = [](PythonRequestData data) {
-            LOG_INFO() << "OnData: " << data.ConnectionAssignedId << " " << data.RequestId << " " << data.b_IsResponse << " " << data.Path << " " << data.ContentType << " " << data.Length;
+        auto OnRequest = [](PythonRequest request) { 
+            LOG_INFO() << "OnRequest: " << request.ConnectionAssignedId << " " << request.RequestId << " " << request.Path << " " << request.Body.ContentType << " " << request.Body.Length;
+        };
+        auto OnResponse = [](PythonResponse response) {
+            LOG_INFO() << "OnResponse: " << response.ConnectionAssignedId << " " << response.RequestId << " " << response.Status << " " << response.Body.ContentType << " " << response.Body.Length;
         };
 
-        for (;;) {
-            int32_t r = quicsend_server_poll(server, OnConnect, OnTimeout, OnData, 100);
+        while (!m_terminated) {
+            int32_t r = quicsend_server_poll(m_server, OnConnect, OnTimeout, OnRequest, OnResponse, 100);
 
             if (r == 0) {
                 break;
             }
         }
 
-        quicsend_server_destroy(server);
+        quicsend_server_destroy(m_server);
     }
     catch (std::exception& e) {
         LOG_ERROR() << "Exception: " << e.what() << "";

@@ -91,22 +91,20 @@ void QuicSendClient::Close() {
 
 int64_t QuicSendClient::Request(
     const std::string& path,
-    BodyDataType type,
-    const void* data,
-    int bytes)
+    BodyData body)
 {
     if (closed_) {
         return -1;
     }
 
-    if (!data || bytes == 0) {
+    if (body.Empty()) {
         const std::vector<std::pair<std::string, std::string>> headers = {
             {":method", "GET"},
             {":scheme", "https"},
             {":authority", settings_.Host},
             {":path", path},
-            {"user-agent", "quiche-quicsend"},
-            {"content-length", "0"}
+            {"user-agent", QUICSEND_CLIENT_AGENT},
+            {"Authorization", std::string("Bearer ") + settings_.AuthToken},
         };
 
         return connection_->SendRequest(headers);
@@ -117,12 +115,44 @@ int64_t QuicSendClient::Request(
         {":scheme", "https"},
         {":authority", settings_.Host},
         {":path", path},
-        {"user-agent", "quiche-quicsend"},
-        {"content-type", BodyDataTypeToString(type)},
-        {"content-length", std::to_string(bytes)}
+        {"user-agent", QUICSEND_CLIENT_AGENT},
+        {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+        {"content-type", body.ContentType},
+        {"content-length", std::to_string(body.Length)},
     };
 
-    return connection_->SendRequest(headers, data, bytes);
+    return connection_->SendRequest(headers, body.Data, body.Length);
+}
+
+void QuicSendClient::Respond(
+    int64_t request_id,
+    int32_t status,
+    BodyData body)
+{
+    if (closed_) {
+        return;
+    }
+
+    if (body.Empty()) {
+        const std::vector<std::pair<std::string, std::string>> headers = {
+            {":status", std::to_string(status)},
+            {"server", QUICSEND_CLIENT_AGENT},
+            {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+        };
+
+        connection_->SendResponse(request_id, headers);
+        return;
+    }
+
+    const std::vector<std::pair<std::string, std::string>> headers = {
+        {":status", std::to_string(status)},
+        {"server", QUICSEND_CLIENT_AGENT},
+        {"Authorization", std::string("Bearer ") + settings_.AuthToken},
+        {"content-type", body.ContentType},
+        {"content-length", std::to_string(body.Length)},
+    };
+
+    connection_->SendResponse(request_id, headers, body.Data, body.Length);
 }
 
 void QuicSendClient::Poll(

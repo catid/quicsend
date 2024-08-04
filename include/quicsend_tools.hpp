@@ -11,6 +11,8 @@
 #include <functional>
 #include <sstream>
 
+#include <boost/asio.hpp>
+
 
 //------------------------------------------------------------------------------
 // Logger
@@ -119,6 +121,8 @@ struct CallbackScope {
 };
 
 std::vector<uint8_t> LoadPEMCertAsDER(const std::string& pem_file_path);
+
+std::string EndpointToString(const boost::asio::ip::udp::endpoint& endpoint);
 
 
 //------------------------------------------------------------------------------

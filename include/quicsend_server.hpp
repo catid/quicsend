@@ -8,6 +8,7 @@
 // HTTP/3 Server
 
 struct QuicSendServerSettings {
+    std::string AuthToken;
     uint16_t Port;
     std::string KeyPath;
     std::string CertPath;
@@ -28,9 +29,13 @@ public:
     int64_t Request(
         uint64_t connection_id,
         const std::string& path,
-        BodyDataType type,
-        const void* data,
-        int bytes);
+        BodyData body);
+
+    void Respond(
+        uint64_t connection_id,
+        int64_t request_id,
+        int32_t status,
+        BodyData body);
 
     // Returns false if the server is closed
     bool Poll(
@@ -47,16 +52,16 @@ protected:
         std::size_t bytes,
         const boost::asio::ip::udp::endpoint& peer_endpoint);
 
-    void send_version_negotiation(
+    void SendVersionNegotiation(
         const ConnectionId& scid,
         const ConnectionId& dcid,
         const boost::asio::ip::udp::endpoint& peer_endpoint);
-    void send_retry(
+    void SendRetry(
         const ConnectionId& scid,
         const ConnectionId& dcid,
         const boost::asio::ip::udp::endpoint& peer_endpoint);
 
-    std::shared_ptr<QuicheConnection> create_conn(
+    std::shared_ptr<QuicheConnection> CreateConnection(
         const ConnectionId& dcid,
         const ConnectionId& odcid,
         const boost::asio::ip::udp::endpoint& peer_endpoint);

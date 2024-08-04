@@ -47,33 +47,69 @@ void QuicSendServer::Close(uint64_t connection_id) {
 int64_t QuicSendServer::Request(
     uint64_t connection_id,
     const std::string& path,
-    BodyDataType type,
-    const void* data,
-    int bytes)
+    BodyData body)
 {
     auto conn = sender_->Find(connection_id);
     if (!conn) {
         return -1;
     }
 
-    const char* method = bytes > 0 ? "PUT" : "GET";
+    if (body.Empty()) {
+        const std::vector<std::pair<std::string, std::string>> headers = {
+            {":method", "GET"},
+            {":scheme", "https"},
+            {":path", path},
+            {"user-agent", QUICSEND_SERVER_AGENT},
+        };
 
-    std::vector<std::pair<std::string, std::string>> headers = {
-        {":method", method},
-        {":path", path},
-        {"user-agent", "quicsend"},
-        {"content-type", BodyDataTypeToString(type)},
-    };
-
-    if (bytes > 0) {
-        headers.push_back({"content-length", std::to_string(bytes)});
+        return conn->SendRequest(headers);
     }
 
-    return conn->SendRequest(
-        headers,
-        data,
-        bytes
-    );
+    const std::vector<std::pair<std::string, std::string>> headers = {
+        {":method", "PUT"},
+        {":scheme", "https"},
+        {":path", path},
+        {"user-agent", QUICSEND_SERVER_AGENT},
+        {"content-type", body.ContentType},
+        {"content-length", std::to_string(body.Length)},
+    };
+
+    return conn->SendRequest(headers, body.Data, body.Length);
+}
+
+void QuicSendServer::Respond(
+    uint64_t connection_id,
+    int64_t request_id,
+    int32_t status,
+    BodyData body)
+{
+    if (closed_) {
+        return;
+    }
+
+    auto conn = sender_->Find(connection_id);
+    if (!conn) {
+        return;
+    }
+
+    if (body.Empty()) {
+        const std::vector<std::pair<std::string, std::string>> headers = {
+            {":status", std::to_string(status)},
+            {"server", QUICSEND_SERVER_AGENT},
+        };
+
+        conn->SendResponse(request_id, headers);
+        return;
+    }
+
+    std::vector<std::pair<std::string, std::string>> headers = {
+        {":status", std::to_string(status)},
+        {"server", QUICSEND_SERVER_AGENT},
+        {"content-type", body.ContentType},
+        {"content-length", std::to_string(body.Length)},
+    };
+
+    conn->SendResponse(request_id, headers, body.Data, body.Length);
 }
 
 bool QuicSendServer::Poll(
@@ -127,14 +163,14 @@ void QuicSendServer::OnDatagram(
     std::shared_ptr<QuicheConnection> conn_ptr = sender_->Find(dcid);
     if (!conn_ptr) {
         if (!quiche_version_is_supported(version)) {
-            send_version_negotiation(scid, dcid, peer_endpoint);
+            SendVersionNegotiation(scid, dcid, peer_endpoint);
             LOG_WARN() << "New connection: Unsupported version " << version; 
             return;
         }
 
         if (token_len == 0) {
             // We require a token to connect to avoid DDoS attacks
-            send_retry(scid, dcid, peer_endpoint);
+            SendRetry(scid, dcid, peer_endpoint);
             return;
         }
 
@@ -145,7 +181,7 @@ void QuicSendServer::OnDatagram(
             return;
         }
 
-        conn_ptr = create_conn(dcid, odcid, peer_endpoint);
+        conn_ptr = CreateConnection(dcid, odcid, peer_endpoint);
         if (!conn_ptr) {
             LOG_ERROR() << "Failed to create connection";
             return;
@@ -155,7 +191,7 @@ void QuicSendServer::OnDatagram(
     conn_ptr->OnDatagram(data, bytes, peer_endpoint);
 }
 
-void QuicSendServer::send_version_negotiation(
+void QuicSendServer::SendVersionNegotiation(
     const ConnectionId& scid,
     const ConnectionId& dcid,
     const boost::asio::ip::udp::endpoint& peer_endpoint)
@@ -175,7 +211,7 @@ void QuicSendServer::send_version_negotiation(
     qs_->Send(buffer, peer_endpoint);
 }
 
-void QuicSendServer::send_retry(
+void QuicSendServer::SendRetry(
     const ConnectionId& scid,
     const ConnectionId& dcid,
     const boost::asio::ip::udp::endpoint& peer_endpoint)
@@ -205,7 +241,7 @@ void QuicSendServer::send_retry(
     qs_->Send(buffer, peer_endpoint);
 }
 
-std::shared_ptr<QuicheConnection> QuicSendServer::create_conn(
+std::shared_ptr<QuicheConnection> QuicSendServer::CreateConnection(
     const ConnectionId& dcid,
     const ConnectionId& odcid,
     const boost::asio::ip::udp::endpoint& peer_endpoint)
@@ -217,12 +253,22 @@ std::shared_ptr<QuicheConnection> QuicSendServer::create_conn(
     qcs.qs = qs_;
     qcs.dcid = dcid;
     qcs.on_timeout = [this, dcid](uint64_t connection_id) {
-        LOG_INFO() << "*** Connection timeout: " << connection_id;
+        LOG_INFO() << "*** Link timeout: " << connection_id;
     };
     qcs.on_connect = [this](uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint) {
-        LOG_INFO() << "*** Connection established: " << connection_id << " " << peer_endpoint.address().to_string();
+        LOG_INFO() << "*** Link established: " << connection_id << " " << EndpointToString(peer_endpoint);
     };
-    qcs.on_data = [this](const QuicheMailbox::Event& event) {
+    QuicheConnection* qc_weak = qc.get();
+    qcs.on_data = [this, qc_weak](const QuicheMailbox::Event& event) {
+        if (!qc_weak->IsConnected()) {
+            if (event.AuthKey == settings_.AuthToken) {
+                qc_weak->MarkClientConnected();
+            } else {
+                LOG_WARN() << "*** Link closed: Invalid auth token";
+                qc_weak->Close("invalid auth token");
+                return;
+            }
+        }
         mailbox_.Post(event);
     };
 

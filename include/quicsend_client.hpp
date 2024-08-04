@@ -8,6 +8,7 @@
 // HTTP/3 Client
 
 struct QuicSendClientSettings {
+    std::string AuthToken;
     std::string Host;
     uint16_t Port;
     std::string CertPath;
@@ -26,15 +27,18 @@ public:
 
     int64_t Request(
         const std::string& path,
-        BodyDataType type,
-        const void* data,
-        int bytes);
+        BodyData body);
 
     void Poll(
         OnConnectCallback on_connect,
         OnTimeoutCallback on_timeout,
         OnDataCallback on_request,
         int timeout_msec = 100);
+
+    void Respond(
+        int64_t request_id,
+        int32_t status,
+        BodyData body);
 
 private:
     QuicSendClientSettings settings_;

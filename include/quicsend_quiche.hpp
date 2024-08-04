@@ -1,22 +1,14 @@
 #pragma once
 
-#include <string>
-#include <vector>
 #include <unordered_map>
 #include <algorithm>
 #include <array>
-#include <memory>
 #include <cstdlib>
 #include <cstring>
-#include <optional>
-#include <atomic>
-#include <mutex>
 #include <random>
-#include <cstdint>
-#include <functional>
-#include <thread>
 
-#include <boost/asio.hpp>
+#include <quicsend_tools.hpp>
+
 #include <quiche.h>
 
 #include <fcntl.h>
@@ -37,6 +29,8 @@
 #define QUIC_SEND_FAST_INTERVAL_MSEC 10
 #define QUIC_CONNECT_TIMEOUT_MSEC 3000
 #define QUIC_TLS_CNAME "catid.io"
+#define QUICSEND_CLIENT_AGENT "quicsend-client"
+#define QUICSEND_SERVER_AGENT "quicsend-server"
 
 #define TOKEN_ID static_cast<uint8_t>( 0xdc )
 #define MAX_TOKEN_LEN (5 + QUICHE_MAX_CONN_ID_LEN + 16/*IPv6*/)
@@ -160,7 +154,7 @@ protected:
 
 
 //------------------------------------------------------------------------------
-// QuicheMailbox
+// BodyData
 
 enum class BodyDataType {
     Unknown,
@@ -171,15 +165,31 @@ enum class BodyDataType {
 const char* BodyDataTypeToString(BodyDataType type);
 BodyDataType BodyDataTypeFromString(const std::string& type);
 
+struct BodyData {
+    const char* ContentType;
+    const uint8_t* Data;
+    int32_t Length;
+
+    bool Empty() const {
+        return Length == 0 || !Data || !ContentType;
+    }
+};
+
+
+//------------------------------------------------------------------------------
+// QuicheMailbox
 
 class QuicheMailbox {
 public:
     struct Event {
-        uint64_t ConnectionAssignedId = 0;
         bool IsResponse = false; // else it's a response
+
+        uint64_t ConnectionAssignedId = 0;
         uint64_t Id = MAX_QUIC_STREAMS;
 
+        std::string AuthKey;
         std::string Path;
+        std::string Status;
         BodyDataType Type = BodyDataType::Unknown;
         std::shared_ptr<std::vector<uint8_t>> Buffer;
     };
@@ -217,7 +227,7 @@ struct DataStream {
     bool Finished = false;
     std::shared_ptr<std::vector<uint8_t>> Buffer;
 
-    std::string Method, Path, Status;
+    std::string Method, Path, Status, AuthKey;
     BodyDataType ContentType = BodyDataType::Unknown;
 
     void OnHeader(const std::string& name, const std::string& value);
@@ -293,9 +303,17 @@ public:
     }
     bool FlushEgress(std::shared_ptr<SendBuffer>& buffer);
 
+    // This checks peer certificate and closes the connection if it does not match
     bool ComparePeerCertificate(const void* cert_cer_data, int bytes);
 
-    void Close();
+    bool IsConnected() const {
+        return connected_;
+    }
+    void MarkClientConnected() {
+        connected_ = true;
+    }
+
+    void Close(const char* reason = "exit");
 
     // Returns true if the connection is still connected
     bool Poll(OnConnectCallback on_connect, OnTimeoutCallback on_timeout);

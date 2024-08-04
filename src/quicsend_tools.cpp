@@ -168,3 +168,9 @@ std::vector<uint8_t> LoadPEMCertAsDER(const std::string& pem_file_path) {
 
     return der_data;
 }
+
+std::string EndpointToString(const boost::asio::ip::udp::endpoint& endpoint) {
+    std::ostringstream ss;
+    ss << endpoint.address().to_string() << ":" << endpoint.port();
+    return ss.str();
+}

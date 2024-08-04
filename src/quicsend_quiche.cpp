@@ -495,6 +495,8 @@ void DataStream::OnHeader(const std::string& name, const std::string& value)
         Path = value;
     } else if (name == ":status") {
         Status = value;
+    } else if (name == "Authorization") {
+        AuthKey = value;
     } else if (name == "content-type") {
         ContentType = BodyDataTypeFromString(value);
     }
@@ -525,6 +527,7 @@ void DataStream::Reset()
     Method.clear();
     Path.clear();
     Status.clear();
+    AuthKey.clear();
     ContentType = BodyDataType::Unknown;
     Buffer = nullptr;
     IsResponse = false;
@@ -677,11 +680,11 @@ void QuicheConnection::OnDatagram(
     FlushEgress();
 }
 
-void QuicheConnection::Close() {
+void QuicheConnection::Close(const char* reason) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     if (!timeout_) {
-        quiche_conn_close(conn_, true, 0, nullptr, 0);
+        quiche_conn_close(conn_, true, 0, (const uint8_t*)reason, strlen(reason));
     }
 }
 
