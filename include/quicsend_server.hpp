@@ -26,11 +26,6 @@ public:
     // API calls
     void Close(uint64_t connection_id);
 
-    int64_t Request(
-        uint64_t connection_id,
-        const std::string& path,
-        BodyData body);
-
     void Respond(
         uint64_t connection_id,
         int64_t request_id,

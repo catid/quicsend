@@ -102,7 +102,6 @@ int32_t quicsend_client_poll(
     QuicSendClient *client,
     connect_callback on_connect,
     timeout_callback on_timeout,
-    request_callback on_request,
     response_callback on_response,
     int32_t timeout_msec)
 {
@@ -111,25 +110,11 @@ int32_t quicsend_client_poll(
     }
 
     auto fn_event = [&](const QuicheMailbox::Event& event) {
-        route_event(event, on_connect, on_timeout, on_request, on_response);
+        route_event(event, on_connect, on_timeout, nullptr, on_response);
     };
 
     client->mailbox_.Poll(fn_event, timeout_msec);
     return 1;
-}
-
-void quicsend_client_respond(
-    QuicSendClient* client,
-    int64_t request_id,
-    int32_t status,
-    const PythonBody* body)
-{
-    if (!client || !client->IsRunning()) {
-        return;
-    }
-
-    BodyData bd = PythonBodyToBodyData(body);
-    client->Respond(request_id, status, bd);
 }
 
 
@@ -153,26 +138,11 @@ void quicsend_server_destroy(QuicSendServer *server) {
     }
 }
 
-int64_t quicsend_server_request(
-    QuicSendServer *server,
-    uint64_t connection_id,
-    const char* path,
-    const PythonBody* body)
-{
-    if (server == NULL) {
-        return -1;
-    }
-
-    BodyData bd = PythonBodyToBodyData(body);
-    return server->Request(connection_id, path, bd);
-}
-
 int32_t quicsend_server_poll(
     QuicSendServer *server,
     connect_callback on_connect,
     timeout_callback on_timeout,
     request_callback on_request,
-    response_callback on_response,
     int32_t timeout_msec)
 {
     if (server == NULL || !server->IsRunning()) {
@@ -180,7 +150,7 @@ int32_t quicsend_server_poll(
     }
 
     auto fn_event = [&](const QuicheMailbox::Event& event) {
-        route_event(event, on_connect, on_timeout, on_request, on_response);
+        route_event(event, on_connect, on_timeout, on_request, nullptr);
     };
 
     server->Poll(fn_event, timeout_msec);

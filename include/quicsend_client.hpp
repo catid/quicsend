@@ -31,11 +31,6 @@ public:
 
     QuicheMailbox mailbox_;
 
-    void Respond(
-        int64_t request_id,
-        int32_t status,
-        BodyData body);
-
 private:
     QuicSendClientSettings settings_;
 

@@ -138,34 +138,3 @@ int64_t QuicSendClient::Request(
 
     return connection_->SendRequest(headers, body.Data, body.Length);
 }
-
-void QuicSendClient::Respond(
-    int64_t request_id,
-    int32_t status,
-    BodyData body)
-{
-    if (closed_) {
-        return;
-    }
-
-    if (body.Empty()) {
-        const std::vector<std::pair<std::string, std::string>> headers = {
-            {":status", std::to_string(status)},
-            {"server", QUICSEND_CLIENT_AGENT},
-            {"Authorization", std::string("Bearer ") + settings_.Authorization},
-        };
-
-        connection_->SendResponse(request_id, headers);
-        return;
-    }
-
-    const std::vector<std::pair<std::string, std::string>> headers = {
-        {":status", std::to_string(status)},
-        {"server", QUICSEND_CLIENT_AGENT},
-        {"Authorization", std::string("Bearer ") + settings_.Authorization},
-        {"content-type", body.ContentType},
-        {"content-length", std::to_string(body.Length)},
-    };
-
-    connection_->SendResponse(request_id, headers, body.Data, body.Length);
-}

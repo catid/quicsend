@@ -44,39 +44,6 @@ void QuicSendServer::Close(uint64_t connection_id) {
     }
 }
 
-int64_t QuicSendServer::Request(
-    uint64_t connection_id,
-    const std::string& path,
-    BodyData body)
-{
-    auto conn = sender_->Find(connection_id);
-    if (!conn) {
-        return -1;
-    }
-
-    if (body.Empty()) {
-        const std::vector<std::pair<std::string, std::string>> headers = {
-            {":method", "GET"},
-            {":scheme", "https"},
-            {":path", path},
-            {"user-agent", QUICSEND_SERVER_AGENT},
-        };
-
-        return conn->SendRequest(headers);
-    }
-
-    const std::vector<std::pair<std::string, std::string>> headers = {
-        {":method", "PUT"},
-        {":scheme", "https"},
-        {":path", path},
-        {"user-agent", QUICSEND_SERVER_AGENT},
-        {"content-type", body.ContentType},
-        {"content-length", std::to_string(body.Length)},
-    };
-
-    return conn->SendRequest(headers, body.Data, body.Length);
-}
-
 void QuicSendServer::Respond(
     uint64_t connection_id,
     int64_t request_id,

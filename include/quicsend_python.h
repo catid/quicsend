@@ -61,15 +61,8 @@ int32_t quicsend_client_poll(
     QuicSendClient* client,
     connect_callback on_connect,
     timeout_callback on_timeout,
-    request_callback on_request,
     response_callback on_response,
     int32_t timeout_msec);
-
-void quicsend_client_respond(
-    QuicSendClient* client,
-    int64_t request_id,
-    int32_t status,
-    const PythonBody* body);
 
 
 //------------------------------------------------------------------------------
@@ -86,19 +79,12 @@ QuicSendServer* quicsend_server_create(const PythonQuicSendServerSettings* setti
 
 void quicsend_server_destroy(QuicSendServer* server);
 
-int64_t quicsend_server_request(
-    QuicSendServer* server,
-    uint64_t connection_id,
-    const char* path,
-    const PythonBody* body); // Optional
-
 // Returns non-zero if the server is still valid
 int32_t quicsend_server_poll(
     QuicSendServer* server,
     connect_callback on_connect,
     timeout_callback on_timeout,
     request_callback on_request,
-    response_callback on_response,
     int32_t timeout_msec);
 
 void quicsend_server_respond(

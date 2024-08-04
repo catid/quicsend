@@ -870,12 +870,12 @@ void QuicheConnection::ProcessH3Events() {
             case QUICHE_H3_EVENT_PRIORITY_UPDATE:
                 break;
 
-            case QUICHE_H3_EVENT_GOAWAY:
-                if (!timeout_) {
-                    settings_.on_timeout(settings_.AssignedId);
-                    timeout_ = true;
-                }
+            case QUICHE_H3_EVENT_GOAWAY: {
+                const char* reason = "Received GOAWAY";
+                LOG_INFO() << "Connection aborted: " << reason;
+                quiche_conn_close(conn_, true, 0, (const uint8_t*)reason, strlen(reason));
                 break;
+            }
 
             default:
                 break;
@@ -888,9 +888,7 @@ int64_t QuicheConnection::SendRequest(
     const void* data,
     int bytes)
 {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-
-    if (IsClosed()) {
+    if (timeout_) {
         return -1;
     }
 
@@ -904,21 +902,38 @@ int64_t QuicheConnection::SendRequest(
         });
     }
 
-    int64_t stream_id = quiche_h3_send_request(
-        http3_,
-        conn_,
-        h3_headers.data(),
-        h3_headers.size(),
-        (bytes <= 0)/*fin*/);
-    if (stream_id < 0) {
-        LOG_ERROR() << "failed to send request: " << stream_id << " " << quiche_h3_error_to_string(stream_id);
-        return -1;
-    }
+    while (!timeout_) {
+        // Hold lock while sending request
+        {
+            std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    streams_[stream_id].IsResponse = true;
-    SendBody(stream_id, data, bytes);
+            int64_t stream_id = quiche_h3_send_request(
+                http3_,
+                conn_,
+                h3_headers.data(),
+                h3_headers.size(),
+                (bytes <= 0)/*fin*/);
 
-    return stream_id;
+            // If request is blocked by flow control:
+            if (stream_id == QUICHE_H3_ERR_STREAM_BLOCKED && quiche_conn_is_established(conn_)) {
+                // Sleep for a while to allow flow control to drain and retry (below)
+            } else {
+                if (stream_id < 0) {
+                    LOG_ERROR() << "failed to send request: " << stream_id << " " << quiche_h3_error_to_string(stream_id);
+                    return -1;
+                }
+
+                streams_[stream_id].IsResponse = true; // This stream will be used for a response later
+                SendBody(stream_id, data, bytes);
+                return stream_id;
+            }
+        }
+
+        // Wait for flow control to drain
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUIC_SEND_SLOW_INTERVAL_MSEC));
+    } // Retry
+
+    return -1;
 }
 
 bool QuicheConnection::SendResponse(
@@ -929,7 +944,7 @@ bool QuicheConnection::SendResponse(
 {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    if (IsClosed()) {
+    if (timeout_) {
         return false;
     }
 
@@ -943,17 +958,36 @@ bool QuicheConnection::SendResponse(
         });
     }
 
-    int rc = quiche_h3_send_response(
-        http3_, conn_,
-        stream_id,
-        h3_headers.data(), h3_headers.size(),
-        (bytes <= 0)/*fin*/);
-    if (rc != 0) {
-        LOG_ERROR() << "Failed to send response headers: " << rc;
-        return false;
-    }
+    while (!timeout_) {
+        // Hold lock while sending request
+        {
+            std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    return SendBody(stream_id, data, bytes);
+            int r = quiche_h3_send_response(
+                http3_, conn_,
+                stream_id,
+                h3_headers.data(), h3_headers.size(),
+                (bytes <= 0)/*fin*/);
+
+            // If request is blocked by flow control:
+            if (r == QUICHE_H3_ERR_STREAM_BLOCKED && quiche_conn_is_established(conn_)) {
+                // Sleep for a while to allow flow control to drain and retry (below)
+            } else {
+                if (r < 0) {
+                    LOG_ERROR() << "failed to send response: " << r << " " << quiche_h3_error_to_string(r);
+                    return false;
+                }
+
+                streams_[stream_id].IsResponse = false;
+                return SendBody(stream_id, data, bytes);
+            }
+        }
+
+        // Wait for flow control to drain
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUIC_SEND_SLOW_INTERVAL_MSEC));
+    } // Retry
+
+    return false;
 }
 
 bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes) {

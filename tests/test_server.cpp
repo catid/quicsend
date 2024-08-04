@@ -57,16 +57,10 @@ int main(int argc, char* argv[]) {
             body.Data = (const uint8_t*)response.data();
             body.Length = (int32_t)response.size();
             quicsend_server_respond(m_server, request.ConnectionAssignedId, request.RequestId, 200, &body);
-
-            PythonBody body2{};
-            quicsend_server_request(m_server, request.ConnectionAssignedId, "simple2.txt", &body2);
-        };
-        auto OnResponse = [](PythonResponse response) {
-            LOG_INFO() << "OnResponse: cid=" << response.ConnectionAssignedId << " rid=" << response.RequestId << " status=" << response.Status << " ct=" << response.Body.ContentType << " len=" << response.Body.Length;
         };
 
         while (!m_terminated) {
-            int32_t r = quicsend_server_poll(m_server, OnConnect, OnTimeout, OnRequest, OnResponse, 100);
+            int32_t r = quicsend_server_poll(m_server, OnConnect, OnTimeout, OnRequest, 100);
 
             if (r == 0) {
                 break;
