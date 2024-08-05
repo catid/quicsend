@@ -31,6 +31,7 @@
 #define QUIC_TLS_CNAME "catid.io" /* MUST match key generation on CLI */
 #define QUICSEND_CLIENT_AGENT "quicsend-client"
 #define QUICSEND_SERVER_AGENT "quicsend-server"
+#define QUICSEND_HEADER_INFO "quicsend-header-info"
 
 #define TOKEN_ID static_cast<uint8_t>( 0xdc )
 #define MAX_TOKEN_LEN (5 + QUICHE_MAX_CONN_ID_LEN + 16/*IPv6*/)
@@ -173,7 +174,7 @@ struct BodyData {
 struct IncomingStream {
     uint64_t Id = 0;
 
-    std::string Method, Path, Status, Authorization, ContentType;
+    std::string Method, Path, Status, Authorization, ContentType, HeaderInfo;
 
     std::vector<uint8_t> Buffer;
 

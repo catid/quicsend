@@ -23,6 +23,7 @@ static void route_event(
 
             request.Path = event.Stream->Path.c_str();
             request.Body.ContentType = event.Stream->ContentType.c_str();
+            request.HeaderInfo = event.Stream->HeaderInfo.c_str();
             if (event.Stream->Buffer.empty()) {
                 request.Body.Data = nullptr;
                 request.Body.Length = 0;
@@ -39,6 +40,7 @@ static void route_event(
 
             response.Status = std::atoi(event.Stream->Status.c_str());
             response.Body.ContentType = event.Stream->ContentType.c_str();
+            response.HeaderInfo = event.Stream->HeaderInfo.c_str();
             if (event.Stream->Buffer.empty()) {
                 response.Body.Data = nullptr;
                 response.Body.Length = 0;
@@ -86,6 +88,7 @@ void quicsend_client_destroy(QuicSendClient *client) {
 int64_t quicsend_client_request(
     QuicSendClient *client,
     const char* path,
+    const char* header_info,
     const PythonBody* body)
 {
     if (client == NULL) {
@@ -93,7 +96,7 @@ int64_t quicsend_client_request(
     }
 
     BodyData bd = PythonBodyToBodyData(body);
-    return client->Request(path, bd);
+    return client->Request(path, header_info, bd);
 }
 
 int32_t quicsend_client_poll(
@@ -160,13 +163,14 @@ void quicsend_server_respond(
     uint64_t connection_id,
     int64_t request_id,
     int32_t status,
+    const char* header_info,
     const PythonBody* body)
 {
     if (server == NULL) {
         return;
     }
     BodyData bd = PythonBodyToBodyData(body);
-    server->Respond(connection_id, request_id, status, bd);
+    server->Respond(connection_id, request_id, status, header_info, bd);
 }
 
 void quicsend_server_close(

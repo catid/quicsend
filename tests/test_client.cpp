@@ -19,6 +19,7 @@ static void signalHandler(int signum) {
 // Entrypoint
 
 QuicSendClient* m_client = nullptr;
+uint64_t m_t0 = 0;
 
 int main(int argc, char* argv[]) {
 #ifdef ENABLE_QUICHE_DEBUG_LOGGING
@@ -44,18 +45,27 @@ int main(int argc, char* argv[]) {
         auto OnConnect = [](uint64_t connection_id, const char* peer_endpoint) {
             LOG_INFO() << "OnConnect: cid=" << connection_id << " addr=" << peer_endpoint;
 
+            m_t0 = GetNsec();
+
             PythonBody body{};
-            int64_t rid = quicsend_client_request(m_client, "simple.txt", &body);
+            int64_t rid = quicsend_client_request(m_client, "simple.txt", "{\"foo\": \"bar\"}", &body);
             LOG_INFO() << "Send request id=" << rid;
         };
         auto OnTimeout = [](uint64_t connection_id) {
             LOG_INFO() << "OnTimeout: cid=" << connection_id;
         };
         auto OnResponse = [](PythonResponse response) {
-            LOG_INFO() << "OnResponse: cid=" << response.ConnectionAssignedId << " rid=" << response.RequestId << " status=" << response.Status << " ct=" << response.Body.ContentType << " len=" << response.Body.Length;
+            uint64_t t1 = GetNsec();
+            LOG_INFO() << "Throughput: " << response.Body.Length * 1000.0 / (t1 - m_t0) << " MB/s";
+
+            LOG_INFO() << "OnResponse: cid=" << response.ConnectionAssignedId << " rid=" << response.RequestId
+                << " hinfo=" << response.HeaderInfo << " status=" << response.Status
+                << " ct=" << response.Body.ContentType << " len=" << response.Body.Length; 
+
+            m_t0 = GetNsec();
 
             PythonBody body{};
-            int64_t rid = quicsend_client_request(m_client, "simple.txt", &body);
+            int64_t rid = quicsend_client_request(m_client, "simple.txt", "{\"foo\": \"bar\"}", &body);
             LOG_INFO() << "Send request id=" << rid;
         };
 

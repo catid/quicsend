@@ -30,6 +30,7 @@ public:
         uint64_t connection_id,
         int64_t request_id,
         int32_t status,
+        const std::string& header_info,
         BodyData body);
 
     void Poll(

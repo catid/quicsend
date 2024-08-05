@@ -48,6 +48,7 @@ void QuicSendServer::Respond(
     uint64_t connection_id,
     int64_t request_id,
     int32_t status,
+    const std::string& header_info,
     BodyData body)
 {
     if (closed_) {
@@ -63,6 +64,7 @@ void QuicSendServer::Respond(
         const std::vector<std::pair<std::string, std::string>> headers = {
             {":status", std::to_string(status)},
             {"server", QUICSEND_SERVER_AGENT},
+            {QUICSEND_HEADER_INFO, header_info},
         };
 
         conn->SendResponse(request_id, headers);
@@ -72,6 +74,7 @@ void QuicSendServer::Respond(
     std::vector<std::pair<std::string, std::string>> headers = {
         {":status", std::to_string(status)},
         {"server", QUICSEND_SERVER_AGENT},
+        {QUICSEND_HEADER_INFO, header_info},
         {"content-type", body.ContentType},
         {"content-length", std::to_string(body.Length)},
     };

@@ -27,6 +27,7 @@ public:
 
     int64_t Request(
         const std::string& path,
+        const std::string& header_info,
         BodyData body);
 
     QuicheMailbox mailbox_;

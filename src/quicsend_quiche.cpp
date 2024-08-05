@@ -497,6 +497,8 @@ void IncomingStream::OnHeader(const std::string& name, const std::string& value)
         Authorization = value;
     } else if (name == "content-type") {
         ContentType = value;
+    } else if (name == QUICSEND_HEADER_INFO) {
+        HeaderInfo = value;
     }
 }
 

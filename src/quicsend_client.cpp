@@ -107,6 +107,7 @@ void QuicSendClient::Close() {
 
 int64_t QuicSendClient::Request(
     const std::string& path,
+    const std::string& header_info,
     BodyData body)
 {
     if (closed_) {
@@ -121,18 +122,20 @@ int64_t QuicSendClient::Request(
             {":path", path},
             {"user-agent", QUICSEND_CLIENT_AGENT},
             {"Authorization", settings_.Authorization},
+            {QUICSEND_HEADER_INFO, header_info},
         };
 
         return connection_->SendRequest(headers);
     }
 
     const std::vector<std::pair<std::string, std::string>> headers = {
-        {":method", "PUT"},
+        {":method", "POST"},
         {":scheme", "https"},
         {":authority", settings_.Host},
         {":path", path},
         {"user-agent", QUICSEND_CLIENT_AGENT},
         {"Authorization", std::string("Bearer ") + settings_.Authorization},
+        {QUICSEND_HEADER_INFO, header_info},
         {"content-type", body.ContentType},
         {"content-length", std::to_string(body.Length)},
     };

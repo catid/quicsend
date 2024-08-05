@@ -20,6 +20,7 @@ struct PythonRequest {
     int64_t RequestId;
 
     const char* Path;
+    const char* HeaderInfo;
     PythonBody Body;
 };
 
@@ -28,6 +29,7 @@ struct PythonResponse {
     int64_t RequestId;
 
     int32_t Status;
+    const char* HeaderInfo;
     PythonBody Body;
 };
 
@@ -54,6 +56,7 @@ void quicsend_client_destroy(QuicSendClient* client);
 int64_t quicsend_client_request(
     QuicSendClient* client,
     const char* path,
+    const char* header_info, // Optional string sent in headers
     const PythonBody* body); // Optional
 
 // Returns non-zero if the client is still valid
@@ -92,6 +95,7 @@ void quicsend_server_respond(
     uint64_t connection_id,
     int64_t request_id,
     int32_t status,
+    const char* header_info, // Optional string sent in headers
     const PythonBody* body);
 
 void quicsend_server_close(

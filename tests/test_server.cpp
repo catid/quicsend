@@ -48,15 +48,17 @@ int main(int argc, char* argv[]) {
             LOG_INFO() << "OnTimeout: cid=" << connection_id;
         };
         auto OnRequest = [](PythonRequest request) { 
-            LOG_INFO() << "OnRequest: cid=" << request.ConnectionAssignedId << " rid=" << request.RequestId << " path=" << request.Path << " ct=" << request.Body.ContentType << " len=" << request.Body.Length;
+            LOG_INFO() << "OnRequest: cid=" << request.ConnectionAssignedId << " rid=" << request.RequestId
+                << " hinfo=" << request.HeaderInfo << " path=" << request.Path
+                << " ct=" << request.Body.ContentType << " len=" << request.Body.Length;
 
-            std::vector<char> response(16*1024*1024, 'A');
+            std::vector<char> response(512*1024*1024, 'A');
 
             PythonBody body{};
             body.ContentType = "text/plain";
             body.Data = (const uint8_t*)response.data();
             body.Length = (int32_t)response.size();
-            quicsend_server_respond(m_server, request.ConnectionAssignedId, request.RequestId, 200, &body);
+            quicsend_server_respond(m_server, request.ConnectionAssignedId, request.RequestId, 200, request.HeaderInfo, &body);
         };
 
         while (!m_terminated) {
