@@ -39,7 +39,7 @@ class BuildPackage(build_ext):
 
 setup(
     name="quicsend",
-    version="0.2.0",
+    version="0.3.0",
     url="https://github.com/catid/quicsend",
     python_requires='>=3',
     ext_modules=[CMakeExtension("quicsend")],
@@ -48,8 +48,8 @@ setup(
         'quicsend': ['quicsend_library.so'],
     },
     include_package_data=True,
+    long_description_content_type='text/markdown',
     package_dir={'': 'python_src'},
     packages=find_namespace_packages(where='python_src'),
     install_requires=[]
 )
-
