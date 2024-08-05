@@ -166,3 +166,6 @@ cython_debug/
 *.srl
 *.pem
 *.csr
+
+quicsend-*/
+.vscode/
