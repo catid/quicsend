@@ -40,6 +40,7 @@ yum install -y python3-pip openssl-devel
 # Clean build artifacts
 rm -rf build/
 rm -rf dist/
+rm -rf repaired/
 
 # Upgrade build tools
 python3 -m pip install --upgrade build wheel
