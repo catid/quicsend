@@ -46,7 +46,11 @@ rm -rf repaired/
 python3 -m pip install --upgrade build wheel
 
 # Build the wheel
-python3 -m build --wheel
+python3.6 -m build --wheel
+python3.7 -m build --wheel
+python3.8 -m build --wheel
+python3.9 -m build --wheel
+python3.10 -m build --wheel
 
 mkdir -p /io/repaired
 
