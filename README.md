@@ -1,11 +1,11 @@
-# quicsend :: High-performance Internet-ready RPC/file transfers from Python
+# quicsend
 
 Use Cloudflare quiche to host secure HTTP3 RPC/file transfer servers from Python on the open Internet.
 
 Released under the BSD 3-Clause License for use in research and commercial software.
 
 
-# Certificate Management
+## Certificate Management
 
 On your central server, generate a root certificate.  If you have multiple servers you can reuse the same root certificate.
 
