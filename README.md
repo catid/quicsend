@@ -73,7 +73,7 @@ Follow the example code in `example_client.py` and `example_server.py` to get st
 git clone https://github.com/catid/quicsend.git
 git submodule update --init --recursive
 
-sudo apt install cmake build-essential cargo libboost-system-dev
+sudo apt install cmake build-essential cargo libboost-system-dev python3-dev python3-numpy
 
 ./install.sh
 ```

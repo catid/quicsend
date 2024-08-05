@@ -30,7 +30,7 @@ SET(Boost_USE_STATIC_LIBS OFF)
 SET(Boost_USE_MULTITHREAD ON)
 find_package(Boost REQUIRED COMPONENTS system)
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development NumPy)
+#find_package(Python3 REQUIRED COMPONENTS Interpreter Development NumPy)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     set(QUICHE_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/quiche/target/release/libquiche.a)
@@ -71,11 +71,11 @@ add_library(${PROJECT_NAME} SHARED
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${Python3_INCLUDE_DIRS}
-    ${Python3_NumPy_INCLUDE_DIRS}
+    #${Python3_INCLUDE_DIRS}
+    #${Python3_NumPy_INCLUDE_DIRS}
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC
-    ${Python3_LIBRARIES}
+    #${Python3_LIBRARIES}
     Boost::system
     quiche_lib
     Threads::Threads

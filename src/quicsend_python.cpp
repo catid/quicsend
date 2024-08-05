@@ -54,11 +54,13 @@ static void route_event(
     }
 }
 
-BodyData PythonBodyToBodyData(const PythonBody* body) {
+static BodyData PythonBodyToBodyData(const PythonBody* body) {
     BodyData bd;
-    bd.ContentType = body->ContentType;
-    bd.Data = body->Data;
-    bd.Length = body->Length;
+    if (body) {
+        bd.ContentType = body->ContentType;
+        bd.Data = reinterpret_cast<const uint8_t*>( body->Data );
+        bd.Length = body->Length;
+    }
     return bd;
 }
 
@@ -71,10 +73,15 @@ extern "C" {
 QuicSendClient* quicsend_client_create(const PythonQuicSendClientSettings* settings)
 {
     QuicSendClientSettings cs;
-    cs.Authorization = std::string("Bearer ") + settings->AuthToken;
-    cs.Host = settings->Host;
+    cs.Authorization = std::string("Bearer ") + (settings->AuthToken ? settings->AuthToken : "");
+    cs.Host = settings->Host ? settings->Host : "";
     cs.Port = settings->Port;
-    cs.CertPath = settings->CertPath;
+    cs.CertPath = settings->CertPath ? settings->CertPath : "";
+
+    if (cs.Host.empty() || cs.Port == 0 || cs.CertPath.empty()) {
+        LOG_ERROR() << "quicsend_client_create: Invalid input";
+        return nullptr;
+    }
 
     return new QuicSendClient(cs);
 }
@@ -95,8 +102,10 @@ int64_t quicsend_client_request(
         return -1;
     }
 
-    BodyData bd = PythonBodyToBodyData(body);
-    return client->Request(path, header_info, bd);
+    return client->Request(
+        path ? path : "",
+        header_info ? header_info : "",
+        PythonBodyToBodyData(body));
 }
 
 int32_t quicsend_client_poll(
@@ -125,10 +134,15 @@ int32_t quicsend_client_poll(
 QuicSendServer* quicsend_server_create(const PythonQuicSendServerSettings* settings)
 {
     QuicSendServerSettings ss;
-    ss.Authorization = std::string("Bearer ") + settings->AuthToken;
+    ss.Authorization = std::string("Bearer ") + (settings->AuthToken ? settings->AuthToken : "");
     ss.Port = settings->Port;
-    ss.KeyPath = settings->KeyPath;
-    ss.CertPath = settings->CertPath;
+    ss.KeyPath = settings->KeyPath ? settings->KeyPath : "";
+    ss.CertPath = settings->CertPath ? settings->CertPath : "";
+
+    if (ss.Port == 0 || ss.KeyPath.empty() || ss.CertPath.empty()) {
+        LOG_ERROR() << "quicsend_server_create: Invalid input";
+        return nullptr;
+    }
 
     return new QuicSendServer(ss);
 }
@@ -169,8 +183,12 @@ void quicsend_server_respond(
     if (server == NULL) {
         return;
     }
-    BodyData bd = PythonBodyToBodyData(body);
-    server->Respond(connection_id, request_id, status, header_info, bd);
+    server->Respond(
+        connection_id,
+        request_id,
+        status,
+        header_info ? header_info : "",
+        PythonBodyToBodyData(body));
 }
 
 void quicsend_server_close(

@@ -1,6 +1,7 @@
 import signal
 import sys
-from quicsend import Server, PythonBody, PythonRequest
+from quicsend import Server, Body, Request
+import ctypes
 
 # Global variables
 server = None
@@ -11,13 +12,13 @@ def signal_handler(signum, frame):
     print(f"Interrupt signal ({signum}) received.")
     terminated = True
 
-def on_connect(connection_id, peer_endpoint):
+def on_connect(connection_id: int, peer_endpoint: str):
     print(f"OnConnect: cid={connection_id} addr={peer_endpoint}")
 
-def on_timeout(connection_id):
+def on_timeout(connection_id: int):
     print(f"OnTimeout: cid={connection_id}")
 
-def on_request(request):
+def on_request(request: Request):
     print(f"OnRequest: cid={request.ConnectionAssignedId} rid={request.RequestId} "
           f"hinfo={request.HeaderInfo.decode() if request.HeaderInfo else None} "
           f"path={request.Path.decode()} "
@@ -27,13 +28,15 @@ def on_request(request):
     # Create a large response
     response = b'A' * (512 * 1024 * 1024)  # 512 MB of 'A' characters
 
-    body = PythonBody()
+    body = Body()
     body.ContentType = b"text/plain"
-    body.Data = response
+    body.Data = ctypes.cast(id(response), ctypes.c_void_p)
     body.Length = len(response)
 
+    header_info = request.HeaderInfo.decode()
+
     server.respond(request.ConnectionAssignedId, request.RequestId, 200, 
-                   header_info=request.HeaderInfo, body=body)
+                   header_info=header_info, body=body)
 
 def main():
     global server

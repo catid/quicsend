@@ -11,7 +11,7 @@ extern "C" {
 
 struct PythonBody {
     const char* ContentType;
-    const uint8_t* Data;
+    const void* Data;
     int32_t Length;
 };
 

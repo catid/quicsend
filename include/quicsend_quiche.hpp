@@ -158,9 +158,9 @@ protected:
 // BodyData
 
 struct BodyData {
-    const char* ContentType;
-    const uint8_t* Data;
-    int32_t Length;
+    const char* ContentType = nullptr;
+    const uint8_t* Data = nullptr;
+    int32_t Length = 0;
 
     bool Empty() const {
         return Length == 0 || !Data || !ContentType;

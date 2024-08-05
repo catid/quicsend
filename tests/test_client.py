@@ -1,7 +1,7 @@
 import signal
 import sys
 import time
-from quicsend import Client, PythonBody, PythonResponse
+from quicsend import Client, Body, Response
 
 # Global variables
 client = None
@@ -16,20 +16,20 @@ def signal_handler(signum, frame):
 def get_nsec():
     return int(time.time() * 1e9)
 
-def on_connect(connection_id, peer_endpoint):
+def on_connect(connection_id: int, peer_endpoint: str):
     global t0
     print(f"OnConnect: cid={connection_id} addr={peer_endpoint}")
     
     t0 = get_nsec()
-    
+
     body = None  # Empty body
     rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=body)
     print(f"Send request id={rid}")
 
-def on_timeout(connection_id):
+def on_timeout(connection_id: int):
     print(f"OnTimeout: cid={connection_id}")
 
-def on_response(response):
+def on_response(response: Response):
     global t0
     t1 = get_nsec()
     throughput = response.Body.Length * 1000.0 / (t1 - t0)

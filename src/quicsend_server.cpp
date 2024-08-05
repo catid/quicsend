@@ -115,7 +115,7 @@ void QuicSendServer::OnDatagram(
     if (!conn_ptr) {
         if (!quiche_version_is_supported(version)) {
             SendVersionNegotiation(scid, dcid, peer_endpoint);
-            LOG_WARN() << "New connection: Unsupported version " << version; 
+            LOG_WARN() << "New connection: Unsupported version " << version << " from " << peer_endpoint;
             return;
         }
 
