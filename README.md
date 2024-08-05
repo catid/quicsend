@@ -55,8 +55,6 @@ sudo update-ca-certificates --fresh
 Install the package in your Python environment:
 
 ```bash
-sudo apt install cmake build-essential cargo libboost-system-dev
-
 pip install quicsend
 ```
 
@@ -66,8 +64,7 @@ Follow the example code in `tests/test_client.py` and `tests/test_server.py` to 
 ## Manual Build Instructions
 
 ```bash
-git clone https://github.com/catid/quicsend.git
-git submodule update --init --recursive
+git clone https://github.com/catid/quicsend.git --recursive
 
 sudo apt install cmake build-essential cargo libboost-system-dev
 

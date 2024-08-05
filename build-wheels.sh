@@ -2,11 +2,14 @@
 
 # This script is run inside a Docker container to build the wheels:
 # https://github.com/pypa/manylinux
-# docker run --rm -v "$(pwd)":/io quay.io/pypa/manylinux2014_x86_64 /io/build-wheels.sh
 
-cd /io
+# Debug:
+# docker run --rm -it -v "$(pwd)":/io quay.io/pypa/manylinux2014_x86_64 /bin/bash
 
-export CIBW_ENVIRONMENT="CIBW_PLATFORM=linux_x86_64"
+set -e  # Exit immediately if any command fails
+
+mkdir -p /io/deps
+cd /io/deps
 
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -27,16 +30,27 @@ cd boost_${BOOST_VERSION//./_}
 ./bootstrap.sh
 ./b2 install link=static threading=multi
 
-# Clean up
-cd ..
-rm -f boost_${BOOST_VERSION//./_}.tar.bz2
+cd /io
 
-# Update package lists and install pip
-yum install -y python3-pip
-yum install -y openssl-devel
+rm -rf /io/deps
 
-# Install the build package.
-python3 -m pip install build
+# Install Python build tools and OpenSSL
+yum install -y python3-pip openssl-devel
 
-# Now proceed with your build commands
+# Clean build artifacts
+rm -rf build/
+rm -rf dist/
+
+# Upgrade build tools
+python3 -m pip install --upgrade build wheel
+
+# Build the wheel
 python3 -m build --wheel
+
+mkdir -p /io/repaired
+
+for whl in dist/*.whl; do
+    auditwheel repair "$whl" --plat manylinux_2_28_x86_64 -w /io/repaired/
+done
+
+rm -rf build/
