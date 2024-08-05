@@ -41,6 +41,7 @@ setup(
     name="quicsend",
     version="0.6.0",
     url="https://github.com/catid/quicsend",
+    author="Chris Taylor",
     python_requires='>=3',
     ext_modules=[CMakeExtension("quicsend")],
     cmdclass={"build_ext": BuildPackage},
