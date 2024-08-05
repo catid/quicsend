@@ -2,6 +2,8 @@
 
 Use Cloudflare quiche to host secure HTTP3 RPC/file transfer servers from Python on the open Internet.
 
+Released under the BSD 3-Clause License for use in research and commercial software.
+
 
 # Certificate Management
 
