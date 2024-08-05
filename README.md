@@ -55,6 +55,9 @@ sudo update-ca-certificates --fresh
 Install the package in your Python environment:
 
 ```bash
+# Requires latest pip
+python -m pip install --upgrade pip
+
 pip install quicsend
 ```
 
