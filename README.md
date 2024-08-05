@@ -77,11 +77,11 @@ sudo apt install cmake build-essential cargo libboost-system-dev
 
 ## Discussion
 
-This was developed while working towards a distributed model training system: I was looking for a secure way to send model/pseudo-gradients to/from remote docker containers as fast as possible.  Hence, there's certificate pinning for MitM protection, and client authentication to avoid misuse of the server.  It uses multiple parallel connections with BBRv2 congestion control to transparently to make full use of the available bandwidth.  It exposes a simple polling interface to Python so that it can be used directly from training scripts for convenience.  The code is all in C++ for performance reasons, with the Internet-exposed server written in Rust and provided by the quiche library.
+This was developed while working towards a distributed model training system: I was looking for a secure way to send model/pseudo-gradients to/from remote docker containers as fast as possible.  Hence, there's certificate pinning for MitM protection, and client authentication to avoid misuse of the server.  The goal is to use multiple parallel connections with BBR congestion control to make full use of the available bandwidth.  It exposes a simple polling interface to Python so that it can be used directly from training scripts for convenience.  The code is all in C++ for performance reasons, with the Internet-exposed server written in Rust and provided by the quiche library.
 
-Note that quiche is fairly non-trivial to use since there are a lot of API calls that each have failure modes during congestion that must be handled appropriately.  It took me about two weeks and lots of unit testing to understand how to use it correctly.  But I've verified that it works correctly and does not leak memory.
+Note that quiche is fairly non-trivial to use since there are a lot of API calls that each have failure modes during congestion that must be handled appropriately.  It took me about two weeks and lots of unit testing to understand how to use it correctly.  But I've verified that it works correctly at this point and does not leak memory.
 
-I optimized and tuned the quiche code: 250MB/s per socket.  It seems to be a CPU bottleneck without any clear way to improve it further based on the profiler.  So to max out a 10Gbps connection, you should run about 8 quicsend servers and multiplex requests across them.
+I optimized and tuned the quiche code, which now achieves 2Gbps (250MB/s) per socket.  It seems to be a CPU bottleneck without any clear way to improve it further based on the profiler.  So to max out a 10Gbps connection, it requires about 8 quicsend servers with requests spread across them.  I added a way to specify a custom header along with each request/response to allow for tagging file pieces on each server connection.
 
 
 ## Acknowledgements
