@@ -26,7 +26,7 @@ find_package(Threads REQUIRED)
 
 find_package(OpenSSL REQUIRED)
 
-SET(Boost_USE_STATIC_LIBS OFF)
+SET(Boost_USE_STATIC_LIBS ON)
 SET(Boost_USE_MULTITHREAD ON)
 find_package(Boost REQUIRED COMPONENTS system)
 
