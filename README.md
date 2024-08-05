@@ -60,7 +60,7 @@ sudo apt install cmake build-essential cargo libboost-system-dev
 pip install quicsend
 ```
 
-Follow the example code in `example_client.py` and `example_server.py` to get started.
+Follow the example code in `tests/test_client.py` and `tests/test_server.py` to get started.
 
 
 ## Manual Build Instructions
