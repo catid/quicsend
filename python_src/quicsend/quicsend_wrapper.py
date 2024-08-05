@@ -3,15 +3,6 @@ import os
 import site
 from enum import Enum
 
-class PeerState(Enum):
-    CONNECTING = 1
-    CONNECTED = 2
-    DISCONNECTED = 3
-
-class DataType(Enum):
-    TEXT = 1
-    BINARY = 2
-
 # Load the shared library (assuming it's named 'quicsend_library.so')
 so_file_name = "quicsend_library.so"
 lib_path = None
@@ -26,30 +17,93 @@ if not lib_path:
 
 lib = ctypes.CDLL(lib_path)
 
-lib.quicsend_client_create.argtypes = [ctypes.c_char_p, ctypes.c_uint16, ctypes.c_char_p, ctypes.c_char_p]
+# Define structures
+class PythonBody(ctypes.Structure):
+    _fields_ = [
+        ("ContentType", ctypes.c_char_p),
+        ("Data", ctypes.POINTER(ctypes.c_uint8)),
+        ("Length", ctypes.c_int32)
+    ]
+
+class PythonRequest(ctypes.Structure):
+    _fields_ = [
+        ("ConnectionAssignedId", ctypes.c_uint64),
+        ("RequestId", ctypes.c_int64),
+        ("Path", ctypes.c_char_p),
+        ("HeaderInfo", ctypes.c_char_p),
+        ("Body", PythonBody)
+    ]
+
+class PythonResponse(ctypes.Structure):
+    _fields_ = [
+        ("ConnectionAssignedId", ctypes.c_uint64),
+        ("RequestId", ctypes.c_int64),
+        ("Status", ctypes.c_int32),
+        ("HeaderInfo", ctypes.c_char_p),
+        ("Body", PythonBody)
+    ]
+
+class PythonQuicSendClientSettings(ctypes.Structure):
+    _fields_ = [
+        ("AuthToken", ctypes.c_char_p),
+        ("Host", ctypes.c_char_p),
+        ("Port", ctypes.c_uint16),
+        ("CertPath", ctypes.c_char_p)
+    ]
+
+class PythonQuicSendServerSettings(ctypes.Structure):
+    _fields_ = [
+        ("AuthToken", ctypes.c_char_p),
+        ("Port", ctypes.c_uint16),
+        ("CertPath", ctypes.c_char_p),
+        ("KeyPath", ctypes.c_char_p)
+    ]
+
+# Define callback function types
+CONNECT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_char_p)
+TIMEOUT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_uint64)
+REQUEST_CALLBACK = ctypes.CFUNCTYPE(None, PythonRequest)
+RESPONSE_CALLBACK = ctypes.CFUNCTYPE(None, PythonResponse)
+
+# Set up function signatures
+lib.quicsend_client_create.argtypes = [ctypes.POINTER(PythonQuicSendClientSettings)]
 lib.quicsend_client_create.restype = ctypes.c_void_p
 
 lib.quicsend_client_destroy.argtypes = [ctypes.c_void_p]
 lib.quicsend_client_destroy.restype = None
 
-lib.quicsend_client_request.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int]
-lib.quicsend_client_request.restype = None
+lib.quicsend_client_request.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(PythonBody)]
+lib.quicsend_client_request.restype = ctypes.c_int64
 
-lib.quicsend_client_poll.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-lib.quicsend_client_poll.restype = None
+lib.quicsend_client_poll.argtypes = [ctypes.c_void_p, CONNECT_CALLBACK, TIMEOUT_CALLBACK, RESPONSE_CALLBACK, ctypes.c_int32]
+lib.quicsend_client_poll.restype = ctypes.c_int32
 
-# Define callback function types
-CONNECT_CALLBACK = ctypes.CFUNCTYPE(None)
-DISCONNECT_CALLBACK = ctypes.CFUNCTYPE(None)
-REQUEST_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int)
-RESPONSE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int)
+lib.quicsend_server_create.argtypes = [ctypes.POINTER(PythonQuicSendServerSettings)]
+lib.quicsend_server_create.restype = ctypes.c_void_p
+
+lib.quicsend_server_destroy.argtypes = [ctypes.c_void_p]
+lib.quicsend_server_destroy.restype = None
+
+lib.quicsend_server_poll.argtypes = [ctypes.c_void_p, CONNECT_CALLBACK, TIMEOUT_CALLBACK, REQUEST_CALLBACK, ctypes.c_int32]
+lib.quicsend_server_poll.restype = ctypes.c_int32
+
+lib.quicsend_server_respond.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_int64, ctypes.c_int32, ctypes.c_char_p, ctypes.POINTER(PythonBody)]
+lib.quicsend_server_respond.restype = None
+
+lib.quicsend_server_close.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+lib.quicsend_server_close.restype = None
 
 class Client:
-    def __init__(self, server_address, port, cert_file, auth_key):
-        self.client = lib.quicsend_client_create(server_address.encode(), port, ctypes.c_int, cert_file.encode(), auth_key.encode())
+    def __init__(self, auth_token, host, port, cert_path):
+        settings = PythonQuicSendClientSettings(
+            AuthToken=auth_token.encode(),
+            Host=host.encode(),
+            Port=port,
+            CertPath=cert_path.encode()
+        )
+        self.client = lib.quicsend_client_create(ctypes.byref(settings))
         if not self.client:
-            raise RuntimeError("Failed to create quiche client")
-        self.responses = {}
+            raise RuntimeError("Failed to create QuicSend client")
 
     def __del__(self):
         self.destroy()
@@ -59,27 +113,90 @@ class Client:
             lib.quicsend_client_destroy(self.client)
             self.client = None
 
-    def request(self, endpoint_path, body, response_callback):
-        if body == None:
-            request_id = self.quicsend_client_request(self.client, endpoint_path, ctypes.c_void_p(None), 0)
-        elif isinstance(body, str):
-            encoded_body = body.encode('utf-8')
-            ptr = ctypes.cast(ctypes.create_string_buffer(encoded_body), ctypes.c_void_p)
-            request_id = self.quicsend_client_request(self.client, endpoint_path, ptr, len(encoded_body))
-        elif isinstance(body, bytes):
-            request_type = DataType.BINARY
+    def request(self, path, header_info=None, body=None):
+        path_encoded = path.encode()
+        header_info_encoded = header_info.encode() if header_info else None
+        
+        if body:
+            if isinstance(body, str):
+                body_encoded = body.encode()
+                python_body = PythonBody(ContentType=b"text/plain", Data=body_encoded, Length=len(body_encoded))
+            elif isinstance(body, bytes):
+                python_body = PythonBody(ContentType=b"application/octet-stream", Data=body, Length=len(body))
+            else:
+                raise ValueError("Unsupported body type")
         else:
-            raise RuntimeError("Unsupported data type")
+            python_body = None
 
-    # This function will invoke response callbacks that were previously registered as well
-    def poll(self, connect_callback, disconnect_callback, request_callback):
-        self.connect_callback = CONNECT_CALLBACK(connect_callback)
-        self.disconnect_callback = DISCONNECT_CALLBACK(disconnect_callback)
-        self.request_callback = REQUEST_CALLBACK(request_callback)
-        self.response_callback = RESPONSE_CALLBACK(response_callback)
+        return lib.quicsend_client_request(self.client, path_encoded, header_info_encoded, ctypes.byref(python_body) if python_body else None)
 
-        lib.quicsend_client_poll(self.client, 
-                                 self.connect_callback,
-                                 self.disconnect_callback,
-                                 self.request_callback,
-                                 self.response_callback)
+    def poll(self, on_connect, on_timeout, on_response, timeout_msec):
+        def connect_callback(connection_id, peer_endpoint):
+            on_connect(connection_id, peer_endpoint.decode())
+
+        def timeout_callback(connection_id):
+            on_timeout(connection_id)
+
+        def response_callback(response):
+            on_response(response)
+
+        connect_cb = CONNECT_CALLBACK(connect_callback)
+        timeout_cb = TIMEOUT_CALLBACK(timeout_callback)
+        response_cb = RESPONSE_CALLBACK(response_callback)
+
+        return lib.quicsend_client_poll(self.client, connect_cb, timeout_cb, response_cb, timeout_msec)
+
+class Server:
+    def __init__(self, auth_token, port, cert_path, key_path):
+        settings = PythonQuicSendServerSettings(
+            AuthToken=auth_token.encode(),
+            Port=port,
+            CertPath=cert_path.encode(),
+            KeyPath=key_path.encode()
+        )
+        self.server = lib.quicsend_server_create(ctypes.byref(settings))
+        if not self.server:
+            raise RuntimeError("Failed to create QuicSend server")
+
+    def __del__(self):
+        self.destroy()
+
+    def destroy(self):
+        if self.server:
+            lib.quicsend_server_destroy(self.server)
+            self.server = None
+
+    def poll(self, on_connect, on_timeout, on_request, timeout_msec):
+        def connect_callback(connection_id, peer_endpoint):
+            on_connect(connection_id, peer_endpoint.decode())
+
+        def timeout_callback(connection_id):
+            on_timeout(connection_id)
+
+        def request_callback(request):
+            on_request(request)
+
+        connect_cb = CONNECT_CALLBACK(connect_callback)
+        timeout_cb = TIMEOUT_CALLBACK(timeout_callback)
+        request_cb = REQUEST_CALLBACK(request_callback)
+
+        return lib.quicsend_server_poll(self.server, connect_cb, timeout_cb, request_cb, timeout_msec)
+
+    def respond(self, connection_id, request_id, status, header_info=None, body=None):
+        header_info_encoded = header_info.encode() if header_info else None
+        
+        if body:
+            if isinstance(body, str):
+                body_encoded = body.encode()
+                python_body = PythonBody(ContentType=b"text/plain", Data=body_encoded, Length=len(body_encoded))
+            elif isinstance(body, bytes):
+                python_body = PythonBody(ContentType=b"application/octet-stream", Data=body, Length=len(body))
+            else:
+                raise ValueError("Unsupported body type")
+        else:
+            python_body = None
+
+        lib.quicsend_server_respond(self.server, connection_id, request_id, status, header_info_encoded, ctypes.byref(python_body) if python_body else None)
+
+    def close(self, connection_id):
+        lib.quicsend_server_close(self.server, connection_id)

@@ -6,6 +6,8 @@ This was developed while working towards a distributed model training system: I 
 
 Note that quiche is fairly non-trivial to use since there are a lot of API calls that each have failure modes during congestion that must be handled appropriately.  It took me about two weeks and lots of unit testing to understand how to use it correctly.  But I've verified that it works correctly and does not leak memory.
 
+I optimized and tuned the quiche code: 250MB/s per socket.  It seems to be a CPU bottleneck without any clear way to improve it further based on the profiler.  So to max out a 10Gbps connection, you should run about 8 quicsend servers and multiplex requests across them.
+
 
 # Certificate Management
 

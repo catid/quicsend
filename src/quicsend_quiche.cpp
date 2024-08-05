@@ -87,7 +87,8 @@ quiche_config* CreateQuicheConfig(
     quiche_config_enable_pacing(config, true);
 
     // Latest congestion control algorithm
-    quiche_config_set_cc_algorithm(config, QUICHE_CC_BBR2);
+    // Note: QUICHE_CC_BBR2 seems to be a bit slower than QUICHE_CC_BBR
+    quiche_config_set_cc_algorithm(config, QUICHE_CC_BBR);
 
     // Enable peer certificate verification
     quiche_config_verify_peer(config, true);
