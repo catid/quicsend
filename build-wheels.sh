@@ -43,7 +43,7 @@ rm -rf dist/
 rm -rf repaired/
 
 # Upgrade build tools
-python3 -m pip install --upgrade build wheel auditwheel
+python3 -m pip install --upgrade build wheel auditwheel msgpack
 
 # Build the wheel
 python3.6 -m build --wheel
