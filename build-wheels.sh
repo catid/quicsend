@@ -59,3 +59,4 @@ for whl in dist/*.whl; do
 done
 
 rm -rf build/
+rm -rf dist/
