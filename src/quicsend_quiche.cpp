@@ -1028,7 +1028,6 @@ bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes
         //quiche_conn_stream_shutdown(conn_, stream_id, QUICHE_SHUTDOWN_WRITE, 0);
     } else {
         const uint8_t* data = reinterpret_cast<const uint8_t*>(vdata);
-        LOG_INFO() << "SendBody: stream_id=" << stream_id << " len=" << bytes << " data=" << DumpHex(data);
         ssize_t rc = quiche_h3_send_body(http3_, conn_, stream_id, 
                                  data, bytes,
                                  false/*fin*/);

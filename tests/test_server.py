@@ -1,7 +1,6 @@
 import signal
 import sys
-from quicsend import Server, Body, Request
-import ctypes
+from quicsend import Server, Request, ToBody, FromBody
 
 # Global variables
 server = None
@@ -28,15 +27,10 @@ def on_request(request: Request):
     # Create a large response
     response = b'A' * (512 * 1024 * 1024)  # 512 MB of 'A' characters
 
-    body = Body()
-    body.ContentType = b"text/plain"
-    body.Data = ctypes.cast(id(response), ctypes.c_void_p)
-    body.Length = len(response)
-
     header_info = request.HeaderInfo.decode()
 
     server.respond(request.ConnectionAssignedId, request.RequestId, 200, 
-                   header_info=header_info, body=body)
+                   header_info=header_info, body=ToBody(response))
 
 def main():
     global server

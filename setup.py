@@ -39,7 +39,7 @@ class BuildPackage(build_ext):
 
 setup(
     name="quicsend",
-    version="0.6.0",
+    version="0.7.0",
     url="https://github.com/catid/quicsend",
     author="Chris Taylor",
     python_requires='>=3',
@@ -53,5 +53,5 @@ setup(
     long_description_content_type='text/markdown',
     package_dir={'': 'python_src'},
     packages=find_namespace_packages(where='python_src'),
-    install_requires=[]
+    install_requires=['msgpack']
 )

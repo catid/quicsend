@@ -1,5 +1,9 @@
 #include <quicsend_python.h>
 
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+
+
 //------------------------------------------------------------------------------
 // Tools
 
@@ -54,14 +58,6 @@ static void route_event(
     }
 }
 
-static BodyData PythonBodyToBodyData(const PythonBody& body) {
-    BodyData bd;
-    bd.ContentType = body.ContentType ? body.ContentType : "";
-    bd.Data = body.Data ? reinterpret_cast<const uint8_t*>( body.Data ) : nullptr;
-    bd.Length = body.Length;
-    return bd;
-}
-
 extern "C" {
 
 
@@ -100,10 +96,25 @@ int64_t quicsend_client_request(
         return -1;
     }
 
+    // Convert Python body to C++ body
+    BodyData bd;
+    Py_buffer view{};
+    PyObject* py_obj = (PyObject*)body.Data;
+    if (py_obj && PyObject_GetBuffer(py_obj, &view, PyBUF_SIMPLE) == 0) {
+        bd.ContentType = body.ContentType ? body.ContentType : "";
+        bd.Data = static_cast<const uint8_t*>(view.buf);
+        bd.Length = static_cast<int32_t>(view.len);
+    }
+    CallbackScope cbs([&]() {
+        if (bd.Data) {
+            PyBuffer_Release(&view);
+        }
+    });
+
     return client->Request(
         path ? path : "",
         header_info ? header_info : "",
-        PythonBodyToBodyData(body));
+        bd);
 }
 
 int32_t quicsend_client_poll(
@@ -178,17 +189,31 @@ void quicsend_server_respond(
     const char* header_info,
     PythonBody body)
 {
-    LOG_INFO() << "HexDump: " << DumpHex(body.Data, 32);
-
     if (server == NULL) {
         return;
     }
+
+    // Convert Python body to C++ body
+    BodyData bd;
+    Py_buffer view{};
+    PyObject* py_obj = (PyObject*)body.Data;
+    if (py_obj && PyObject_GetBuffer(py_obj, &view, PyBUF_SIMPLE) == 0) {
+        bd.ContentType = body.ContentType ? body.ContentType : "";
+        bd.Data = static_cast<const uint8_t*>(view.buf);
+        bd.Length = static_cast<int32_t>(view.len);
+    }
+    CallbackScope cbs([&]() {
+        if (bd.Data) {
+            PyBuffer_Release(&view);
+        }
+    });
+
     server->Respond(
         connection_id,
         request_id,
         status,
         header_info ? header_info : "",
-        PythonBodyToBodyData(body));
+        bd);
 }
 
 void quicsend_server_close(
@@ -198,6 +223,7 @@ void quicsend_server_close(
     if (server == NULL) {
         return;
     }
+
     server->Close(connection_id);
 }
 

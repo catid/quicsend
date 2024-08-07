@@ -1,7 +1,7 @@
 import signal
 import sys
 import time
-from quicsend import Client, Body, Response
+from quicsend import Client, Response, ToBody, FromBody
 import ctypes
 
 # Global variables

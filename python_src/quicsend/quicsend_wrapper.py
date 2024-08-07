@@ -2,7 +2,8 @@ import ctypes
 import os
 import site
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
+import msgpack
 
 # Load the shared library (assuming it's named 'quicsend_library.so')
 so_file_name = "quicsend_library.so"
@@ -98,6 +99,34 @@ lib.quicsend_server_respond.restype = None
 
 lib.quicsend_server_close.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
 lib.quicsend_server_close.restype = None
+
+def ToBody(data: Any) -> Body:
+    body = Body()
+    if isinstance(data, bytes):
+        body.ContentType = b"application/octet-stream"
+        body.datab_ = data
+    elif isinstance(data, str):
+        body.ContentType = b"text/plain"
+        body.datab_ = data.encode()
+    elif isinstance(data, dict):
+        body.ContentType = b"application/msgpack"
+        body.datab_ = msgpack.pack(data, use_bin_type=True)
+    else:
+        raise TypeError("Invalid data type")
+    body.Data = ctypes.cast(id(body.datab_), ctypes.c_void_p)
+    body.Length = len(body.datab_)
+    return body
+
+def FromBody(body: Body) -> Any:
+    if body.ContentType == b"application/msgpack":
+        data = ctypes.pythonapi.PyBytes_FromStringAndSize(body.Data, body.Length)
+        return msgpack.unpackb(data, raw=True)
+    elif body.ContentType == b"application/octet-stream":
+        data = ctypes.pythonapi.PyBytes_FromStringAndSize(body.Data, body.Length)
+        return data
+    elif body.ContentType == b"text/plain":
+        data = ctypes.pythonapi.PyBytes_FromStringAndSize(body.Data, body.Length)
+        return data.decode()
 
 class Client:
     def __init__(self,
