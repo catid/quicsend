@@ -3,6 +3,9 @@
 #include <quicsend_client.hpp>
 #include <quicsend_server.hpp>
 
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+
 extern "C" {
 
 
@@ -14,7 +17,7 @@ extern "C" {
 // These must be kept in sync with quicsend_wrapper.py
 struct PythonBody {
     const char* ContentType;
-    const void* Data;
+    PyObject* Data; // bytes object
     int32_t Length;
 };
 

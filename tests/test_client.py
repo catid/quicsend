@@ -17,25 +17,6 @@ def signal_handler(signum, frame):
 def get_nsec():
     return int(time.time() * 1e9)
 
-def dump_hex(ptr, size, label=None):
-    # Ensure we don't try to print more than what's available
-    dump_size = min(size, 32)
-    
-    # Create a bytes object from the memory pointed to by the void_p
-    data = ctypes.string_at(ptr, dump_size)
-    
-    # Convert to hex
-    hex_dump = ' '.join([f'{b:02x}' for b in data])
-    
-    # Prepare the output string
-    output = f"{label + ' ' if label else ''}({size} bytes): {hex_dump}"
-    
-    # Add ellipsis if there's more data
-    if size > 32:
-        output += " ..."
-    
-    print(output)
-
 def on_connect(connection_id: int, peer_endpoint: str):
     global t0
     print(f"OnConnect: cid={connection_id} addr={peer_endpoint}")
@@ -49,17 +30,18 @@ def on_timeout(connection_id: int):
     print(f"OnTimeout: cid={connection_id}")
 
 def on_response(response: Response):
+    data = FromBody(response.Body)
+
     global t0
     t1 = get_nsec()
     throughput = response.Body.Length * 1000.0 / (t1 - t0)
     print(f"Throughput: {throughput:.2f} MB/s")
 
+    hex_string = ' '.join(f'{b:02x}' for b in data[:16])
+
     print(f"OnResponse: cid={response.ConnectionAssignedId} rid={response.RequestId} "
           f"hinfo={response.HeaderInfo.decode() if response.HeaderInfo else None} status={response.Status} "
-          f"ct={response.Body.ContentType.decode() if response.Body.ContentType else None} len={response.Body.Length}")
-
-    # Call our function
-    dump_hex(response.Body.Data, 32, "Sample")
+          f"ct={response.Body.ContentType.decode() if response.Body.ContentType else None} len={len(data)} type={type(data)} data={hex_string}")
 
     t0 = get_nsec()
 

@@ -24,7 +24,7 @@ class Body(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
         ("ContentType", ctypes.c_char_p),
-        ("Data", ctypes.c_void_p),
+        ("Data", ctypes.py_object),
         ("Length", ctypes.c_int32),
     ]
 
@@ -112,21 +112,25 @@ def ToBody(data: Any) -> Body:
         body.ContentType = b"application/msgpack"
         body.datab_ = msgpack.pack(data, use_bin_type=True)
     else:
-        raise TypeError("Invalid data type")
-    body.Data = ctypes.cast(id(body.datab_), ctypes.c_void_p)
+        raise TypeError("ToBody: Unexpected data type")
+    body.Data = body.datab_
     body.Length = len(body.datab_)
     return body
 
 def FromBody(body: Body) -> Any:
+    data = body.Data
+
+    if data is None or body.Length <= 0:
+        return None
+
     if body.ContentType == b"application/msgpack":
-        data = ctypes.pythonapi.PyBytes_FromStringAndSize(body.Data, body.Length)
         return msgpack.unpackb(data, raw=True)
     elif body.ContentType == b"application/octet-stream":
-        data = ctypes.pythonapi.PyBytes_FromStringAndSize(body.Data, body.Length)
         return data
     elif body.ContentType == b"text/plain":
-        data = ctypes.pythonapi.PyBytes_FromStringAndSize(body.Data, body.Length)
         return data.decode()
+    else:
+        raise TypeError("FromBody:Unexpected content type")
 
 class Client:
     def __init__(self,

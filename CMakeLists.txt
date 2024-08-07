@@ -85,13 +85,3 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "") # remove lib prefix
 set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
 message(STATUS "CMAKE_LIBRARY_OUTPUT_DIRECTORY: ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-
-# Helper macro to add test executables
-macro(add_test_executable name)
-    add_executable(${name} tests/${name}.cpp)
-    target_link_libraries(${name} ${PROJECT_NAME})
-endmacro()
-
-# Add test executables
-add_test_executable(test_client)
-add_test_executable(test_server)

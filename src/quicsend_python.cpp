@@ -1,11 +1,27 @@
 #include <quicsend_python.h>
 
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-
 
 //------------------------------------------------------------------------------
 // Tools
+
+// Function to create a Python bytes object from raw data
+PyObject* create_python_bytes(const void* data, Py_ssize_t len) {
+    if (!data || len <= 0) {
+        return nullptr;
+    }
+
+    // Create a memoryview
+    PyObject* memview = PyMemoryView_FromMemory((char*)data, len, PyBUF_READ);
+    if (!memview) {
+        return nullptr;
+    }
+
+    // Convert memoryview to bytes
+    PyObject* bytes_obj = PyBytes_FromObject(memview);
+    Py_DECREF(memview);
+
+    return bytes_obj;
+}
 
 static void route_event(
     const QuicheMailbox::Event& event,
@@ -25,35 +41,41 @@ static void route_event(
             request.ConnectionAssignedId = event.ConnectionAssignedId;
             request.RequestId = event.Stream->Id;
 
+            PyGILState_STATE gstate = PyGILState_Ensure();
+            PyObject* py_obj = create_python_bytes(event.Stream->Buffer.data(), event.Stream->Buffer.size());
+
             request.Path = event.Stream->Path.c_str();
             request.Body.ContentType = event.Stream->ContentType.c_str();
             request.HeaderInfo = event.Stream->HeaderInfo.c_str();
-            if (event.Stream->Buffer.empty()) {
-                request.Body.Data = nullptr;
-                request.Body.Length = 0;
-            } else {
-                request.Body.Data = event.Stream->Buffer.data();
-                request.Body.Length = event.Stream->Buffer.size();
-            }
+            request.Body.Data = py_obj;
+            request.Body.Length = event.Stream->Buffer.size();
 
             on_request(request);
+
+            if (py_obj) {
+                Py_DECREF(py_obj);
+            }
+            PyGILState_Release(gstate);
         } else if (on_response) {
             PythonResponse response;
             response.ConnectionAssignedId = event.ConnectionAssignedId;
             response.RequestId = event.Stream->Id;
 
+            PyGILState_STATE gstate = PyGILState_Ensure();
+            PyObject* py_obj = create_python_bytes(event.Stream->Buffer.data(), event.Stream->Buffer.size());
+
             response.Status = std::atoi(event.Stream->Status.c_str());
             response.Body.ContentType = event.Stream->ContentType.c_str();
             response.HeaderInfo = event.Stream->HeaderInfo.c_str();
-            if (event.Stream->Buffer.empty()) {
-                response.Body.Data = nullptr;
-                response.Body.Length = 0;
-            } else {
-                response.Body.Data = event.Stream->Buffer.data();
-                response.Body.Length = event.Stream->Buffer.size();
-            }
+            response.Body.Data = py_obj;
+            response.Body.Length = event.Stream->Buffer.size();
 
             on_response(response);
+
+            if (py_obj) {
+                Py_DECREF(py_obj);
+            }
+            PyGILState_Release(gstate);
         }
     }
 }
@@ -99,8 +121,7 @@ int64_t quicsend_client_request(
     // Convert Python body to C++ body
     BodyData bd;
     Py_buffer view{};
-    PyObject* py_obj = (PyObject*)body.Data;
-    if (py_obj && PyObject_GetBuffer(py_obj, &view, PyBUF_SIMPLE) == 0) {
+    if (body.Data && PyObject_GetBuffer(body.Data, &view, PyBUF_SIMPLE) == 0) {
         bd.ContentType = body.ContentType ? body.ContentType : "";
         bd.Data = static_cast<const uint8_t*>(view.buf);
         bd.Length = static_cast<int32_t>(view.len);
@@ -196,8 +217,7 @@ void quicsend_server_respond(
     // Convert Python body to C++ body
     BodyData bd;
     Py_buffer view{};
-    PyObject* py_obj = (PyObject*)body.Data;
-    if (py_obj && PyObject_GetBuffer(py_obj, &view, PyBUF_SIMPLE) == 0) {
+    if (body.Data && PyObject_GetBuffer(body.Data, &view, PyBUF_SIMPLE) == 0) {
         bd.ContentType = body.ContentType ? body.ContentType : "";
         bd.Data = static_cast<const uint8_t*>(view.buf);
         bd.Length = static_cast<int32_t>(view.len);
