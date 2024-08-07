@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
             body.ContentType = "text/plain";
             body.Data = (const uint8_t*)response.data();
             body.Length = (int32_t)response.size();
-            quicsend_server_respond(m_server, request.ConnectionAssignedId, request.RequestId, 200, request.HeaderInfo, &body);
+            quicsend_server_respond(m_server, request.ConnectionAssignedId, request.RequestId, 200, request.HeaderInfo, body);
         };
 
         while (!m_terminated) {

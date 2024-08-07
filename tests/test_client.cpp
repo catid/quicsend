@@ -1,5 +1,6 @@
 #include <quicsend_python.h>
 
+#include <iomanip>
 
 //------------------------------------------------------------------------------
 // CTRL+C
@@ -48,7 +49,7 @@ int main(int argc, char* argv[]) {
             m_t0 = GetNsec();
 
             PythonBody body{};
-            int64_t rid = quicsend_client_request(m_client, "simple.txt", "{\"foo\": \"bar\"}", &body);
+            int64_t rid = quicsend_client_request(m_client, "simple.txt", "{\"foo\": \"bar\"}", body);
             LOG_INFO() << "Send request id=" << rid;
         };
         auto OnTimeout = [](uint64_t connection_id) {
@@ -62,10 +63,12 @@ int main(int argc, char* argv[]) {
                 << " hinfo=" << response.HeaderInfo << " status=" << response.Status
                 << " ct=" << response.Body.ContentType << " len=" << response.Body.Length; 
 
+            LOG_INFO() << "Response body: " << DumpHex(response.Body.Data);
+
             m_t0 = GetNsec();
 
             PythonBody body{};
-            int64_t rid = quicsend_client_request(m_client, "simple.txt", "{\"foo\": \"bar\"}", &body);
+            int64_t rid = quicsend_client_request(m_client, "simple.txt", "{\"foo\": \"bar\"}", body);
             LOG_INFO() << "Send request id=" << rid;
         };
 

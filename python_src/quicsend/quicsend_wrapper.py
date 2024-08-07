@@ -18,24 +18,27 @@ if not lib_path:
 
 lib = ctypes.CDLL(lib_path)
 
-# Define structures
+# These must be kept in sync with quicsend_python.h
 class Body(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("ContentType", ctypes.c_char_p),
         ("Data", ctypes.c_void_p),
-        ("Length", ctypes.c_int32)
+        ("Length", ctypes.c_int32),
     ]
 
 class Request(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("ConnectionAssignedId", ctypes.c_uint64),
         ("RequestId", ctypes.c_int64),
         ("Path", ctypes.c_char_p),
         ("HeaderInfo", ctypes.c_char_p),
-        ("Body", Body)
+        ("Body", Body),
     ]
 
 class Response(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("ConnectionAssignedId", ctypes.c_uint64),
         ("RequestId", ctypes.c_int64),
@@ -45,19 +48,21 @@ class Response(ctypes.Structure):
     ]
 
 class PythonQuicSendClientSettings(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("AuthToken", ctypes.c_char_p),
         ("Host", ctypes.c_char_p),
+        ("CertPath", ctypes.c_char_p),
         ("Port", ctypes.c_uint16),
-        ("CertPath", ctypes.c_char_p)
     ]
 
 class PythonQuicSendServerSettings(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("AuthToken", ctypes.c_char_p),
-        ("Port", ctypes.c_uint16),
         ("CertPath", ctypes.c_char_p),
-        ("KeyPath", ctypes.c_char_p)
+        ("KeyPath", ctypes.c_char_p),
+        ("Port", ctypes.c_uint16),
     ]
 
 # Define callback function types
@@ -73,7 +78,7 @@ lib.quicsend_client_create.restype = ctypes.c_void_p
 lib.quicsend_client_destroy.argtypes = [ctypes.c_void_p]
 lib.quicsend_client_destroy.restype = None
 
-lib.quicsend_client_request.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(Body)]
+lib.quicsend_client_request.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, Body]
 lib.quicsend_client_request.restype = ctypes.c_int64
 
 lib.quicsend_client_poll.argtypes = [ctypes.c_void_p, CONNECT_CALLBACK, TIMEOUT_CALLBACK, RESPONSE_CALLBACK, ctypes.c_int32]
@@ -88,7 +93,7 @@ lib.quicsend_server_destroy.restype = None
 lib.quicsend_server_poll.argtypes = [ctypes.c_void_p, CONNECT_CALLBACK, TIMEOUT_CALLBACK, REQUEST_CALLBACK, ctypes.c_int32]
 lib.quicsend_server_poll.restype = ctypes.c_int32
 
-lib.quicsend_server_respond.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_int64, ctypes.c_int32, ctypes.c_char_p, ctypes.POINTER(Body)]
+lib.quicsend_server_respond.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_int64, ctypes.c_int32, ctypes.c_char_p, Body]
 lib.quicsend_server_respond.restype = None
 
 lib.quicsend_server_close.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
@@ -121,7 +126,7 @@ class Client:
     def request(self,
                 path: str,
                 header_info: Optional[str] = None,
-                body: Optional[Body] = None) -> int:
+                body: Optional[Body] = Body()) -> int:
         path_encoded = path.encode()
         header_info_encoded = header_info.encode() if header_info else None
 
@@ -129,7 +134,7 @@ class Client:
             self.client,
             path_encoded,
             header_info_encoded,
-            ctypes.byref(body) if body else None)
+            body)
 
     def poll(self, on_connect, on_timeout, on_response, timeout_msec):
         def connect_callback(connection_id, peer_endpoint):
@@ -192,7 +197,7 @@ class Server:
                 request_id: int,
                 status: int,
                 header_info: Optional[str] = None,
-                body: Optional[Body] = None):
+                body: Optional[Body] = Body()):
         header_info_encoded = header_info.encode() if header_info else None
 
         lib.quicsend_server_respond(
@@ -201,7 +206,7 @@ class Server:
             request_id,
             status,
             header_info_encoded,
-            ctypes.byref(body) if body else None)
+            body)
 
     def close(self, connection_id):
         lib.quicsend_server_close(self.server, connection_id)

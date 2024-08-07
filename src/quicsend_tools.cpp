@@ -6,6 +6,7 @@
 #include <cstring>
 #include <chrono>
 #include <iostream>
+#include <iomanip>
 
 #include <openssl/x509.h>
 #include <openssl/pem.h>
@@ -173,4 +174,25 @@ std::string EndpointToString(const boost::asio::ip::udp::endpoint& endpoint) {
     std::ostringstream ss;
     ss << endpoint.address().to_string() << ":" << endpoint.port();
     return ss.str();
+}
+
+std::string DumpHex(const void* data, size_t size, const char* label) {
+    std::ostringstream oss;
+    const uint8_t* buf = static_cast<const uint8_t*>(data);
+    size_t dump_size = std::min(size, size_t(32)); // Dump up to 32 bytes
+
+    if (label) {
+        oss << label << " ";
+    }
+    oss << "(" << size << " bytes): ";
+
+    for (size_t i = 0; i < dump_size; ++i) {
+        oss << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(buf[i]) << " ";
+    }
+
+    if (size > 32) {
+        oss << "...";
+    }
+
+    return oss.str();
 }

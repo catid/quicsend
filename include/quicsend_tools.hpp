@@ -124,6 +124,8 @@ std::vector<uint8_t> LoadPEMCertAsDER(const std::string& pem_file_path);
 
 std::string EndpointToString(const boost::asio::ip::udp::endpoint& endpoint);
 
+std::string DumpHex(const void* data, size_t size = 32, const char* label = nullptr);
+
 
 //------------------------------------------------------------------------------
 // Serialization

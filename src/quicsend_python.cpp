@@ -54,13 +54,11 @@ static void route_event(
     }
 }
 
-static BodyData PythonBodyToBodyData(const PythonBody* body) {
+static BodyData PythonBodyToBodyData(const PythonBody& body) {
     BodyData bd;
-    if (body) {
-        bd.ContentType = body->ContentType;
-        bd.Data = reinterpret_cast<const uint8_t*>( body->Data );
-        bd.Length = body->Length;
-    }
+    bd.ContentType = body.ContentType ? body.ContentType : "";
+    bd.Data = body.Data ? reinterpret_cast<const uint8_t*>( body.Data ) : nullptr;
+    bd.Length = body.Length;
     return bd;
 }
 
@@ -96,7 +94,7 @@ int64_t quicsend_client_request(
     QuicSendClient *client,
     const char* path,
     const char* header_info,
-    const PythonBody* body)
+    PythonBody body)
 {
     if (client == NULL) {
         return -1;
@@ -178,8 +176,10 @@ void quicsend_server_respond(
     int64_t request_id,
     int32_t status,
     const char* header_info,
-    const PythonBody* body)
+    PythonBody body)
 {
+    LOG_INFO() << "HexDump: " << DumpHex(body.Data, 32);
+
     if (server == NULL) {
         return;
     }

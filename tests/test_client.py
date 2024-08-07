@@ -2,6 +2,7 @@ import signal
 import sys
 import time
 from quicsend import Client, Body, Response
+import ctypes
 
 # Global variables
 client = None
@@ -16,14 +17,32 @@ def signal_handler(signum, frame):
 def get_nsec():
     return int(time.time() * 1e9)
 
+def dump_hex(ptr, size, label=None):
+    # Ensure we don't try to print more than what's available
+    dump_size = min(size, 32)
+    
+    # Create a bytes object from the memory pointed to by the void_p
+    data = ctypes.string_at(ptr, dump_size)
+    
+    # Convert to hex
+    hex_dump = ' '.join([f'{b:02x}' for b in data])
+    
+    # Prepare the output string
+    output = f"{label + ' ' if label else ''}({size} bytes): {hex_dump}"
+    
+    # Add ellipsis if there's more data
+    if size > 32:
+        output += " ..."
+    
+    print(output)
+
 def on_connect(connection_id: int, peer_endpoint: str):
     global t0
     print(f"OnConnect: cid={connection_id} addr={peer_endpoint}")
     
     t0 = get_nsec()
 
-    body = None  # Empty body
-    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=body)
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}')
     print(f"Send request id={rid}")
 
 def on_timeout(connection_id: int):
@@ -39,10 +58,12 @@ def on_response(response: Response):
           f"hinfo={response.HeaderInfo.decode() if response.HeaderInfo else None} status={response.Status} "
           f"ct={response.Body.ContentType.decode() if response.Body.ContentType else None} len={response.Body.Length}")
 
+    # Call our function
+    dump_hex(response.Body.Data, 32, "Sample")
+
     t0 = get_nsec()
 
-    body = None  # Empty body
-    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=body)
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}')
     print(f"Send request id={rid}")
 
 def main():
