@@ -23,7 +23,7 @@ def on_connect(connection_id: int, peer_endpoint: str):
     
     t0 = get_nsec()
 
-    rid = client.request("simple.txt", header_info='{"foo": "bar"}')
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=ToBody("Hello World"))
     print(f"Send request id={rid}")
 
 def on_timeout(connection_id: int):
@@ -45,7 +45,7 @@ def on_response(response: Response):
 
     t0 = get_nsec()
 
-    rid = client.request("simple.txt", header_info='{"foo": "bar"}')
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=ToBody({"foo": "bar"}))
     print(f"Send request id={rid}")
 
 def main():

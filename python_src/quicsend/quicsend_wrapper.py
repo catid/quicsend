@@ -110,7 +110,7 @@ def ToBody(data: Any) -> Body:
         body.datab_ = data.encode()
     elif isinstance(data, dict):
         body.ContentType = b"application/msgpack"
-        body.datab_ = msgpack.pack(data, use_bin_type=True)
+        body.datab_ = msgpack.packb(data, use_bin_type=False) 
     else:
         raise TypeError("ToBody: Unexpected data type")
     body.Data = body.datab_
@@ -124,11 +124,11 @@ def FromBody(body: Body) -> Any:
         return None
 
     if body.ContentType == b"application/msgpack":
-        return msgpack.unpackb(data, raw=True)
+        return msgpack.unpackb(data.tobytes(), raw=False)
     elif body.ContentType == b"application/octet-stream":
-        return data
+        return data # MemoryView object for zero-copy
     elif body.ContentType == b"text/plain":
-        return data.decode()
+        return data.tobytes().decode()
     else:
         raise TypeError("FromBody:Unexpected content type")
 

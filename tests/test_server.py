@@ -18,11 +18,13 @@ def on_timeout(connection_id: int):
     print(f"OnTimeout: cid={connection_id}")
 
 def on_request(request: Request):
+    data = FromBody(request.Body)
+
     print(f"OnRequest: cid={request.ConnectionAssignedId} rid={request.RequestId} "
           f"hinfo={request.HeaderInfo.decode() if request.HeaderInfo else None} "
           f"path={request.Path.decode()} "
           f"ct={request.Body.ContentType.decode() if request.Body.ContentType else None} "
-          f"len={request.Body.Length}")
+          f"len={request.Body.Length} type={type(data)} data={data}")
 
     # Create a large response
     response = b'A' * (512 * 1024 * 1024)  # 512 MB of 'A' characters

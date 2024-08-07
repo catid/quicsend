@@ -4,23 +4,12 @@
 //------------------------------------------------------------------------------
 // Tools
 
-// Function to create a Python bytes object from raw data
-PyObject* create_python_bytes(const void* data, Py_ssize_t len) {
+PyObject* create_python_view_object(void* data, Py_ssize_t len) {
     if (!data || len <= 0) {
-        return nullptr;
+        return Py_None;
     }
 
-    // Create a memoryview
-    PyObject* memview = PyMemoryView_FromMemory((char*)data, len, PyBUF_READ);
-    if (!memview) {
-        return nullptr;
-    }
-
-    // Convert memoryview to bytes
-    PyObject* bytes_obj = PyBytes_FromObject(memview);
-    Py_DECREF(memview);
-
-    return bytes_obj;
+    return PyMemoryView_FromMemory((char*)data, len, PyBUF_WRITE);
 }
 
 static void route_event(
@@ -42,7 +31,7 @@ static void route_event(
             request.RequestId = event.Stream->Id;
 
             PyGILState_STATE gstate = PyGILState_Ensure();
-            PyObject* py_obj = create_python_bytes(event.Stream->Buffer.data(), event.Stream->Buffer.size());
+            PyObject* py_obj = create_python_view_object(event.Stream->Buffer.data(), event.Stream->Buffer.size());
 
             request.Path = event.Stream->Path.c_str();
             request.Body.ContentType = event.Stream->ContentType.c_str();
@@ -62,7 +51,7 @@ static void route_event(
             response.RequestId = event.Stream->Id;
 
             PyGILState_STATE gstate = PyGILState_Ensure();
-            PyObject* py_obj = create_python_bytes(event.Stream->Buffer.data(), event.Stream->Buffer.size());
+            PyObject* py_obj = create_python_view_object(event.Stream->Buffer.data(), event.Stream->Buffer.size());
 
             response.Status = std::atoi(event.Stream->Status.c_str());
             response.Body.ContentType = event.Stream->ContentType.c_str();
