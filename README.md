@@ -1,6 +1,6 @@
 # quicsend
 
-Use Cloudflare quiche to host secure HTTP3 RPC/file transfer servers from Python on the open Internet.
+Python extension using Cloudflare `quiche` to host secure HTTP3 RPC/file transfer servers from Python on the open Internet.  Provides a zero-copy polling API for easy integration into existing Python scripts.  Automatically serializes Python objects using `msgpack`.
 
 Released under the BSD 3-Clause License for use in research and commercial software.
 

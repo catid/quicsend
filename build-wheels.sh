@@ -35,7 +35,7 @@ cd /io
 rm -rf /io/deps
 
 # Install Python build tools and OpenSSL
-yum install -y python3-pip openssl-devel
+yum install -y python3-pip openssl-devel python3-devel
 
 # Clean build artifacts
 rm -rf build/
