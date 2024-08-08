@@ -31,6 +31,7 @@ SET(Boost_USE_MULTITHREAD ON)
 find_package(Boost REQUIRED COMPONENTS system)
 
 find_package(Python3 REQUIRED COMPONENTS Development)
+message(STATUS "Python3_LIBRARIES: ${Python3_LIBRARIES}")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     set(QUICHE_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/quiche/target/release/libquiche.a)
