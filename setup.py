@@ -56,11 +56,15 @@ class BuildPackage(build_ext):
         print(f"Linked Python library: {lib_file}")
 
         if lib_file:
-            shutil.copy(lib_file, extdir)
+            dst = self.build_lib #os.path.join(self.build_lib, 'quicsend')
+            print(f"Copying to: {dst}")
+
+            os.makedirs(dst, exist_ok=True)
+            shutil.copy(lib_file, dst)
 
 setup(
     name="quicsend",
-    version="0.9.0",
+    version="0.11.0",
     url="https://github.com/catid/quicsend",
     author="Chris Taylor",
     python_requires='>=3',
