@@ -39,7 +39,7 @@ class BuildPackage(build_ext):
 
 setup(
     name="quicsend",
-    version="0.7.0",
+    version="0.8.0",
     url="https://github.com/catid/quicsend",
     author="Chris Taylor",
     python_requires='>=3',

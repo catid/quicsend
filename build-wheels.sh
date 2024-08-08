@@ -38,7 +38,6 @@ rm -rf /io/deps
 yum install -y python3-pip openssl-devel python3-devel
 
 # Clean build artifacts
-rm -rf build/
 rm -rf dist/
 rm -rf repaired/
 
@@ -46,10 +45,19 @@ rm -rf repaired/
 python3 -m pip install --upgrade build wheel auditwheel msgpack
 
 # Build the wheel
+rm -rf build/
 python3.6 -m build --wheel
+
+rm -rf build/
 python3.7 -m build --wheel
+
+rm -rf build/
 python3.8 -m build --wheel
+
+rm -rf build/
 python3.9 -m build --wheel
+
+rm -rf build/
 python3.10 -m build --wheel
 
 mkdir -p /io/repaired
