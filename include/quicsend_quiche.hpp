@@ -232,6 +232,17 @@ protected:
 
 
 //------------------------------------------------------------------------------
+// Cached Response
+
+struct CachedResponse {
+    uint64_t stream_id = 0;
+    std::vector<quiche_h3_header> headers;
+    std::shared_ptr<std::vector<uint8_t>> data; // Shared pointer to the body data
+    int bytes_left = 0; // Number of bytes left to send
+};
+
+
+//------------------------------------------------------------------------------
 // Connection State
 
 using OnConnectCallback = std::function<void(uint64_t connection_id, const boost::asio::ip::udp::endpoint& peer_endpoint)>;
@@ -335,10 +346,14 @@ protected:
     uint64_t highest_processed_stream_id_ = 0;
     std::atomic<bool> goaway_sent_ = ATOMIC_VAR_INIT(false);
 
+    // Cache for responses that couldn't be sent immediately
+    std::vector<std::shared_ptr<CachedResponse>> response_cache_;
+
     // Called from function with lock held
     bool SendBody(uint64_t stream_id, const void* data, int bytes);
     void ProcessH3Events();
     void TickTimeout();
+    void FlushCachedResponses();
     void FlushTransfers();
 
     std::shared_ptr<IncomingStream> GetIncomingStream(uint64_t stream_id, bool create = true);

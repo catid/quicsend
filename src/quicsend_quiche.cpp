@@ -711,6 +711,7 @@ void QuicheConnection::TickTimeout() {
 bool QuicheConnection::FlushEgress(std::shared_ptr<SendBuffer>& buffer) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
+    FlushCachedResponses();
     FlushTransfers();
 
     bool sent = false;
@@ -980,9 +981,10 @@ bool QuicheConnection::SendResponse(
         return false;
     }
 
+    // Convert headers to quiche_h3_header format
     std::vector<quiche_h3_header> h3_headers;
     for (const auto& header : headers) {
-        h3_headers.push_back(quiche_h3_header{
+        h3_headers.emplace_back(quiche_h3_header{
             reinterpret_cast<const uint8_t*>(header.first.c_str()),
             header.first.length(),
             reinterpret_cast<const uint8_t*>(header.second.c_str()),
@@ -990,35 +992,37 @@ bool QuicheConnection::SendResponse(
         });
     }
 
-    while (!timeout_) {
-        // Hold lock while sending request
-        {
-            std::lock_guard<std::recursive_mutex> lock(mutex_);
+    // Attempt to send the response headers
+    int r = quiche_h3_send_response(
+        http3_, conn_,
+        stream_id,
+        h3_headers.data(), h3_headers.size(),
+        (bytes <= 0) /* fin */);
 
-            int r = quiche_h3_send_response(
-                http3_, conn_,
-                stream_id,
-                h3_headers.data(), h3_headers.size(),
-                (bytes <= 0)/*fin*/);
-
-            // If request is blocked by flow control:
-            if (r == QUICHE_H3_ERR_STREAM_BLOCKED && quiche_conn_is_established(conn_)) {
-                // Sleep for a while to allow flow control to drain and retry (below)
-            } else {
-                if (r < 0) {
-                    LOG_ERROR() << "failed to send response: " << r << " " << quiche_h3_error_to_string(r);
-                    return false;
-                }
-
-                return SendBody(stream_id, data, bytes);
-            }
+    if (r == QUICHE_H3_ERR_STREAM_BLOCKED && quiche_conn_is_established(conn_)) {
+        // Flow control is blocking the send, cache the response
+        auto cached_response = std::make_shared<CachedResponse>();
+        cached_response->stream_id = stream_id;
+        cached_response->headers = std::move(h3_headers);
+        if (bytes > 0 && data != nullptr) {
+            // Copy the body data into a shared_ptr vector
+            cached_response->data = std::make_shared<std::vector<uint8_t>>(
+                reinterpret_cast<const uint8_t*>(data),
+                reinterpret_cast<const uint8_t*>(data) + bytes
+            );
         }
+        cached_response->bytes_left = bytes;
 
-        // Wait for flow control to drain
-        std::this_thread::sleep_for(std::chrono::milliseconds(QUIC_SEND_SLOW_INTERVAL_MSEC));
-    } // Retry
+        // Add the cached response to the cache
+        response_cache_.push_back(cached_response);
+        return false; // Indicate that the response was cached
+    } else if (r < 0) {
+        LOG_ERROR() << "Failed to send response headers: " << r << " " << quiche_h3_error_to_string(r);
+        return false;
+    }
 
-    return false;
+    // Headers sent successfully, now send the body
+    return SendBody(stream_id, data, bytes);
 }
 
 bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes) {
@@ -1054,6 +1058,71 @@ bool QuicheConnection::SendBody(uint64_t stream_id, const void* vdata, int bytes
 
     FlushEgress();
     return true;
+}
+
+void QuicheConnection::FlushCachedResponses() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    // Iterate over the cached responses
+    for (auto it = response_cache_.begin(); it != response_cache_.end(); ) {
+        auto cached_response = *it;
+
+        // Attempt to resend the response headers
+        int r = quiche_h3_send_response(
+            http3_, conn_,
+            cached_response->stream_id,
+            cached_response->headers.data(), cached_response->headers.size(),
+            cached_response->bytes_left <= 0 /* fin */);
+
+        if (r == QUICHE_H3_ERR_STREAM_BLOCKED && quiche_conn_is_established(conn_)) {
+            // Still blocked, skip to next cached response
+            ++it;
+            continue;
+        } else if (r < 0) {
+            LOG_ERROR() << "Failed to resend cached response headers: " << r << " " << quiche_h3_error_to_string(r);
+            // Remove the failed cached response
+            it = response_cache_.erase(it);
+            continue;
+        }
+
+        // If there is body data to send
+        if (cached_response->data && cached_response->bytes_left > 0) {
+            ssize_t sent = quiche_h3_send_body(
+                http3_, conn_,
+                cached_response->stream_id,
+                cached_response->data->data(),
+                cached_response->bytes_left,
+                (cached_response->bytes_left <= 0) /* fin */);
+            if (sent == QUICHE_H3_ERR_DONE) {
+                it = response_cache_.erase(it);
+                continue;
+            }
+
+            if (sent == QUICHE_H3_ERR_STREAM_BLOCKED) {
+                // Still blocked, cannot send now
+                ++it;
+                continue;
+            } else if (sent < 0) {
+                LOG_ERROR() << "Failed to resend cached response body: " << sent << " " << quiche_h3_error_to_string(sent);
+                // Remove the failed cached response
+                it = response_cache_.erase(it);
+                continue;
+            }
+
+            // Update the bytes left to send
+            cached_response->bytes_left -= sent;
+
+            if (cached_response->bytes_left <= 0) {
+                // All data sent, remove from cache
+                it = response_cache_.erase(it);
+            } else {
+                ++it;
+            }
+        } else {
+            // No body to send, remove from cache
+            it = response_cache_.erase(it);
+        }
+    }
 }
 
 void QuicheConnection::FlushTransfers() {
