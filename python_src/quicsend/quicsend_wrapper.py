@@ -108,7 +108,7 @@ def ToBody(data: Any) -> Body:
     elif isinstance(data, str):
         body.ContentType = b"text/plain"
         body.datab_ = data.encode()
-    elif isinstance(data, dict):
+    elif isinstance(data, (dict, list, int, float, bool, tuple, None)):
         body.ContentType = b"application/msgpack"
         body.datab_ = msgpack.packb(data, use_bin_type=False) 
     else:

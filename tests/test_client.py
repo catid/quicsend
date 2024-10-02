@@ -25,6 +25,12 @@ def on_connect(connection_id: int, peer_endpoint: str):
 
     rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=ToBody("Hello World"))
     print(f"Send request id={rid}")
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=ToBody("Hello World"))
+    print(f"Send request id={rid}")
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=ToBody("Hello World"))
+    print(f"Send request id={rid}")
+    rid = client.request("simple.txt", header_info='{"foo": "bar"}', body=ToBody("Hello World"))
+    print(f"Send request id={rid}")
 
 def on_timeout(connection_id: int):
     print(f"OnTimeout: cid={connection_id}")

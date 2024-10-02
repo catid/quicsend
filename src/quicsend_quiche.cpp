@@ -765,13 +765,16 @@ void QuicheConnection::ProcessH3Events() {
         }
         CallbackScope ev_scope([ev]() { quiche_h3_event_free(ev); });
 
-        switch (quiche_h3_event_type(ev)) {
+        auto event_type = quiche_h3_event_type(ev);
+        switch (event_type) {
             case QUICHE_H3_EVENT_HEADERS: {
+                //LOG_INFO() << "Received headers: stream_id=" << stream_id;
                 auto stream = GetIncomingStream(stream_id);
 
                 using cb_t = std::function<bool(const std::string&, const std::string&)>;
                 cb_t cb = [this, stream](const std::string& name, const std::string& value) -> bool {
                     stream->OnHeader(name, value);
+                    //LOG_INFO() << "Header: " << name << ": " << value;
                     return true; // Return false to stop iterating
                 };
 
@@ -814,6 +817,7 @@ void QuicheConnection::ProcessH3Events() {
             }
 
             case QUICHE_H3_EVENT_FINISHED: {
+                //LOG_INFO() << "QUICHE_H3_EVENT_FINISHED: stream_id=" << stream_id;
                 std::shared_ptr<IncomingStream> stream;
 
                 auto it = incoming_streams_by_id_.find(stream_id);
@@ -840,6 +844,7 @@ void QuicheConnection::ProcessH3Events() {
             }
 
             case QUICHE_H3_EVENT_RESET: {
+                //LOG_INFO() << "QUICHE_H3_EVENT_RESET: stream_id=" << stream_id;
                 DestroyStream(stream_id);
                 break;
             }
@@ -858,6 +863,7 @@ void QuicheConnection::ProcessH3Events() {
             }
 
             default:
+                //LOG_INFO() << "Unknown event type: " << event_type;
                 break;
         }
     }
@@ -951,6 +957,7 @@ int64_t QuicheConnection::SendRequest(
             if ((stream_id == QUICHE_H3_ERR_STREAM_BLOCKED || stream_id == QUICHE_H3_TRANSPORT_ERR_STREAM_LIMIT)
                 && quiche_conn_is_established(conn_)) { 
                 // Sleep for a while to allow flow control to drain and retry (below)
+                //LOG_INFO() << "Request blocked by flow control, retrying";
             } else {
                 if (stream_id < 0) {
                     LOG_ERROR() << "failed to send request: " << stream_id << " " << quiche_h3_error_to_string(stream_id);
