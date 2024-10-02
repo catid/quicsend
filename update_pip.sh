@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Clean up repaired wheels
-rm -rf repaired/
+sudo rm -rf repaired/
 
 # Register QEMU interpreters for ARM emulation
 docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
