@@ -8,6 +8,22 @@
 
 set -e  # Exit immediately if any command fails
 
+# Detect architecture
+ARCH=$(uname -m)
+
+# Set PLATFORM for auditwheel based on architecture
+if [ "$ARCH" == "x86_64" ]; then
+    PLATFORM="manylinux_2_28_x86_64"
+elif [ "$ARCH" == "aarch64" ]; then
+    PLATFORM="manylinux_2_28_aarch64"
+else
+    echo "Unsupported architecture: $ARCH"
+    exit 1
+fi
+
+echo "Building wheels for architecture: $ARCH"
+echo "Using platform tag: $PLATFORM"
+
 mkdir -p /io/deps
 cd /io/deps
 
@@ -39,7 +55,6 @@ yum install -y python3-pip openssl-devel python3-devel
 
 # Clean build artifacts
 rm -rf dist/
-rm -rf repaired/
 
 # Upgrade build tools
 python3 -m pip install --upgrade build wheel auditwheel msgpack
@@ -63,7 +78,7 @@ python3.10 -m build --wheel
 mkdir -p /io/repaired
 
 for whl in dist/*.whl; do
-    auditwheel repair "$whl" --plat manylinux_2_28_x86_64 -w /io/repaired/
+    auditwheel repair "$whl" --plat "$PLATFORM" -w /io/repaired/
 done
 
 rm -rf build/
